@@ -16,11 +16,9 @@ Assumptions:
 import copy
 import lib.lib_sym as slib
 
-
 #import lib.lib as lib
 from lib import lib
 from lib.interp_basic import interp_basic as interpb
-from lib.lambdifyn import lambdifyn as ldn
 #from lib.fast_splines import interp2d
 from lib.fast_interp import interp2d
 from lib import fnames
