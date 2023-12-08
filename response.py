@@ -7,6 +7,7 @@ and response functions.
 todo: need to check accuracy of response functions
 """
 
+from lib.fast_interp import interp1d
 from lib.interp_basic import interp_basic as interpb
 import lib.lib_sym as slib
 from lib import lib
@@ -65,13 +66,14 @@ class Response(object):
                  i_jac_eps=1e-3,
                  i_bad_dx=False,
 
-                 rtol=1e-7,
-                 atol=1e-7,
+                 rtol=1e-12,
+                 atol=1e-12,
                  max_iter=30,
-                 rel_tol=1e-6):
+                 rel_tol=1e-12,
 
-        
+                 save_fig=False):
 
+        self.save_fig = save_fig
         # if forcing, period is assumed known.
         self.forcing = False
         if not(forcing_fn is None):
@@ -278,8 +280,13 @@ class Response(object):
         # Make LC data callable from inside sympy
         imp_lc = sym.zeros(self.dim)
         for i,key in enumerate(self.var_names):
-            fn = interpb(self.lc['t'],self.lc['dat'][:,i],self.T)
-            #fn = interp1d(self.lc['t'],self.lc['dat'][:,i],self.T,kind='cubic')
+
+            tt = self.lc['t'];dtt = tt[1]-tt[0]
+            fn = interp1d(tt[0],tt[-2],dtt,self.lc['dat'][:-1,i],p=True,k=5)
+            
+            #fn = interpb(self.lc['t'],self.lc['dat'][:,i],self.T)
+            imp = imp_fn('lc'+key+'_'+str(i),self.fmod(fn))
+            
             self.lc['imp_'+key] = imp_fn(key,fn)
             self.lc['lam_'+key] = fn
             
@@ -288,8 +295,9 @@ class Response(object):
             
         self.lc_vec = lambdify(self.t,imp_lc,modules='numpy')
         #self.lc_vec = lam_vec(lam_list)
-            
-        self.save_temp_figure(z[:,1:],0,'LC')
+
+        if self.save_fig:
+            self.save_temp_figure(z[:,1:],0,'LC')
 
         self.rule_lc_local = {}
         for j,key in enumerate(self.var_names):
@@ -452,7 +460,6 @@ class Response(object):
                             rtol=1e-13,atol=1e-13)
 
             
-            
             self.sol = sol.y.T
             self.M = np.reshape(self.sol[-1,:],(r,c))
             np.savetxt(self.m_fname,self.M)
@@ -586,15 +593,20 @@ class Response(object):
                 
             else:
                 data = np.loadtxt(fname)
-
+    
             self.g['dat'].append(data)
-            
-            self.save_temp_figure(data,i,'g')
+            if self.save_fig:
+                self.save_temp_figure(data,i,'g')
             
             for j,key in enumerate(self.var_names):
-                fn = interpb(self.tlc,data[:,j],self.T)
-                #fn = interp1d(self.tlc,data[:,j],self.T,kind='cubic')
-                imp = imp_fn('g'+key+'_'+str(i),self.fmod(fn))
+                
+                tt = self.lc['t'];dtt = tt[1]-tt[0]
+                fn = interp1d(tt[0],tt[-2],dtt,data[:-1,j],p=True,k=5)
+                imp = imp_fn('g'+key+'_'+str(i),fn)
+                
+                #fn = interpb(self.tlc,data[:,j],self.T)
+                #imp = imp_fn('g'+key+'_'+str(i),self.fmod(fn))
+                
                 self.g['imp_'+key].append(imp)
                 self.g['lam_'+key].append(fn)                
         
@@ -642,8 +654,10 @@ class Response(object):
         if k == 1:
             # pick correct normalization
             init = copy.deepcopy(self.g1_init)
+            eps = 1e-4
         else:
             init = np.zeros(self.dim)
+            eps = 1e-4
             init = lib.run_newton2(self,self._dg,init,k,het_vec,
                                   max_iter=self.max_iter,eps=eps,
                                   rel_tol=self.rel_tol,rel_err=10,
@@ -660,7 +674,8 @@ class Response(object):
                         init,args=(k,het_vec),
                         t_eval=tlc,
                         method=self.method,
-                        rtol=self.rtol,atol=self.atol)
+                        rtol=self.rtol,atol=self.atol,
+                        dense_output=True)
         
         
         if backwards:
@@ -680,6 +695,7 @@ class Response(object):
         for key in self.var_names:
             self.z['imp_'+key] = []
             self.z['lam_'+key] = []
+            self.z['avg_'+key] = []
 
         print('* Computing z...')
         logging.info('* Computing z...')
@@ -697,16 +713,19 @@ class Response(object):
             else:
                 data = np.loadtxt(fname)
 
-            self.z['dat'].append(data)                
-            self.save_temp_figure(data,i,'z')
+            self.z['dat'].append(data)
+            if self.save_fig:
+                self.save_temp_figure(data,i,'z')
             
             for j,key in enumerate(self.var_names):
-                fn = interpb(self.tlc,data[:,j],self.T)
-                #fn = interp1d(self.tlc,data[:,j],self.T,kind='cubic')
-                imp = imp_fn('z'+key+'_'+str(i),self.fmod(fn))
+
+                tt = self.lc['t'];dtt = tt[1]-tt[0]
+                fn = interp1d(tt[0],tt[-2],dtt,data[:-1,j],p=True,k=1)
+                imp = imp_fn('z'+key+'_'+str(i),fn)
+                
                 self.z['imp_'+key].append(imp)
                 self.z['lam_'+key].append(fn)
-
+                self.z['avg_'+key].append(np.mean(data[:,j]))
         
         self.rule_z_local = {}
 
@@ -717,15 +736,6 @@ class Response(object):
                 fn = sym.Indexed('z'+key,k)
                 d = {fn:self.z['imp_'+key][k](t)}
                 self.rule_z_local.update(d) # global
-        
-        #self.rule_z_AB = {}
-        #for key in self.var_names:
-        #    for i in range(self.miter):
-        #        dictA = {Indexed('z'+key+'A',i):self.z['imp_'+key][i](thA)}
-        #        dictB = {Indexed('z'+key+'B',i):self.z['imp_'+key][i](thB)}
-        #        
-        #        self.rule_z_AB.update(dictA)
-        #        self.rule_z_AB.update(dictB)
 
         
     def generate_z(self,k,het_vec):
@@ -767,7 +777,8 @@ class Response(object):
                         init,args=(k,het_vec),
                         method=self.method,
                         t_eval=tlc,
-                        rtol=self.rtol,atol=self.atol)
+                        rtol=self.rtol,atol=self.atol,
+                        dense_output=True)
         
         if backwards:
             zu = sol.y.T[::-1,:]
@@ -813,18 +824,21 @@ class Response(object):
                 data = np.loadtxt(fname)
 
             self.i['dat'].append(data)
-            
-            self.save_temp_figure(data,i,'i')
+
+            if self.save_fig:
+                self.save_temp_figure(data,i,'i')
             
             for j,key in enumerate(self.var_names):
-                fn = interpb(self.tlc,data[:,j],self.T)
-                #fn = interp1d(self.tlc,data[:,j],self.T,kind='linear')
-                imp = imp_fn('i'+key+'_'+str(i),self.fmod(fn))
+
+                tt = self.lc['t'];dtt = tt[1]-tt[0]
+                fn = interp1d(tt[0],tt[-2],dtt,data[:-1,j],p=True,k=5)
+                imp = imp_fn('i'+key+'_'+str(i),fn)
+                
+                #fn = interpb(self.tlc,data[:,j],self.T)
+                #imp = imp_fn('i'+key+'_'+str(i),self.fmod(fn))
+                
                 self.i['imp_'+key].append(imp)
                 self.i['lam_'+key].append(fn)
-                
-                #lam_temp = lambdify(self.t,self.i['imp_'+key][i](self.t))
-                
         
         # coupling
         # messy but keeps global and local indices clear
@@ -837,18 +851,6 @@ class Response(object):
                 fn = sym.Indexed('i'+key,k)
                 d = {fn:self.i['imp_'+key][k](t)}
                 self.rule_i_local.update(d) # global
-
-        #thA = self.thA
-        #thB = self.thB
-        
-        #self.rule_i_AB = {}
-        #for key in self.var_names:
-        #    for i in range(self.miter):
-        #        dictA = {Indexed('i'+key+'A',i):self.i['imp_'+key][i](thA)}
-        #        dictB = {Indexed('i'+key+'B',i):self.i['imp_'+key][i](thB)}
-                
-        #        self.rule_i_AB.update(dictA)
-        #        self.rule_i_AB.update(dictB)
         
     
     def generate_i(self,k,het_vec):
@@ -888,7 +890,7 @@ class Response(object):
             
             init = np.zeros(self.dim)
             init = lib.run_newton2(self,self._di,init,k,het_vec,
-                                   max_iter=50,rel_tol=self.rel_tol,
+                                   max_iter=self.max_iter,rel_tol=self.rel_tol,
                                    eps=eps,alpha=1,backwards=backwards,
                                    exception=exception)
 
@@ -901,7 +903,8 @@ class Response(object):
         sol = solve_ivp(self._di,[0,tlc[-1]],init,
                         args=(k,het_vec),
                         t_eval=tlc,method=self.method,
-                        rtol=self.rtol,atol=self.atol)
+                        rtol=self.rtol,atol=self.atol,
+                        dense_output=True)
     
         if backwards:
             iu = sol.y.T[::-1,:]
@@ -951,10 +954,18 @@ class Response(object):
             sol = solve_ivp(self._di,[0,tlc[-1]],init,
                             args=(k,het_vec),
                             t_eval=tlc,
-                            method=self.method,dense_output=True)
-            
-            iu = sol.y.T[::-1]
+                            method=self.method,
+                            rtol=self.rtol,atol=self.atol,
+                            dense_output=True)
+
+            if backwards:
+                iu = sol.y.T[::-1,:]                
+            else:
+                iu = sol.y.T
+
             logging.debug('norm const i1='+str(be))
+            #print('norm const i1='+str(be),'iu0',iu[0,:],'z0',z0)
+            
         return iu
 
     def load_het_sym(self):
@@ -1170,10 +1181,15 @@ class Response(object):
                 y= np.zeros(self.TN)
             else:
                 y = lam(self.tlc)
-                        
+            
+            tt = self.lc['t'];dtt = tt[1]-tt[0]
+            fn = interp1d(tt[0],tt[-2],dtt,y[:-1],p=True,k=5)
+            
+            imp = imp_fn(key,fn)
+            
             # save as implemented fn
-            interp = interpb(self.lc['t'],y,self.T)
-            imp = imp_fn(key,self.fmod(interp))
+            #interp = interpb(self.lc['t'],y,self.T)
+            #imp = imp_fn(key,self.fmod(interp))
             het_imp[i] = imp(self.t)
             
         het_vec = lambdify(self.t,het_imp,modules='numpy')
@@ -1207,7 +1223,10 @@ class Response(object):
             key = self.var_names[j]
             ax.plot(self.tlc,data[:,j],label=key)
             ax.legend()
-            
+
+        print(fn+str(k)+' ini'+str(data[0,:]))
+        print(fn+str(k)+' fin'+str(data[-1,:]))
+              
         logging.info(fn+str(k)+' ini'+str(data[0,:]))
         logging.info(fn+str(k)+' fin'+str(data[-1,:]))
         axs[0].set_title(fn+str(k))
@@ -1216,7 +1235,8 @@ class Response(object):
         plt.close()
         
 
-    def __call__(self,t,del1=0):
-        om = self.pardict['om'+str(self.idx)]
-        a = self.pardict['amp'+str(self.idx)]
-        return self.forcing_fn(t,a,om,del1)
+    def __call__(self,t,del1=0,option='add'):
+        if option == 'add':
+            om = self.pardict['om'+str(self.idx)]
+            a = self.pardict['amp'+str(self.idx)]
+            return self.forcing_fn(t,om+del1)
