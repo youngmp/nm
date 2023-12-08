@@ -187,9 +187,9 @@ def load_dill(fnames):
     return templist
 
 def run_newton2(obj,fn,init,k,het_lams,max_iter=10,
-                rel_tol=1e-12,rel_err=10,backwards=True,eps=1e-1,
+                rel_tol=1e-12,rel_err=10,backwards=True,eps=.5,
                 exception=False,alpha=1,min_iter=5,
-                dense=False):
+                dense=True):
     if backwards:
         tlc = -obj.tlc
     else:
@@ -216,7 +216,7 @@ def run_newton2(obj,fn,init,k,het_lams,max_iter=10,
                                        exception=exception,dense=dense)
             
             if np.linalg.norm(dx_prev) < np.linalg.norm(dx):
-                alpha /= 1.1
+                alpha /= 1
                 
             if np.linalg.norm(dx) < np.linalg.norm(dx_smallest):
                 dx_smallest = dx
@@ -225,7 +225,7 @@ def run_newton2(obj,fn,init,k,het_lams,max_iter=10,
             init += dx*alpha
             counter += 1
             
-            if False:
+            if True:
                 fig, axs = plt.subplots(nrows=obj.dim,ncols=1)
                     
                 for i,ax in enumerate(axs):
@@ -242,13 +242,17 @@ def run_newton2(obj,fn,init,k,het_lams,max_iter=10,
                 
             if True:
 
-                print('dx={:.2e}, al={:.2e}'.format(np.linalg.norm(dx),alpha))
+                print('dx={:.2e}, al={:.2e}'.format(np.linalg.norm(dx),alpha),
+                      end='                   \r')
             
             if counter == max_iter:
+                print('')
                 print('WARNING: max iter reached in newton call')
                 
     except KeyboardInterrupt:
         pass
+
+    print('')
     
     if np.linalg.norm(dx_smallest) < np.linalg.norm(dx):
         return init_smallest
@@ -257,7 +261,7 @@ def run_newton2(obj,fn,init,k,het_lams,max_iter=10,
 
 
 def get_newton_jac2(obj,fn,tlc,init,k=None,het_lams=None,return_sol=False,
-                    eps=1e-1,exception=False,dense=False):
+                    eps=1e-2,exception=False,dense=False):
     """
     Newton derivative. for use in newton's method
 
@@ -315,7 +319,7 @@ def get_newton_jac2(obj,fn,tlc,init,k=None,het_lams=None,return_sol=False,
             fig = plt.figure()
             ax = fig.add_subplot(111)
             ax.plot(obj.tlc,sol_unpert[:,p],color='blue')
-            #ax.plot(obj.tlc,sol_pert[:,p])
+            ax.plot(obj.tlc,sol_pert_p[:,p])
             ax.set_title('pert'+str(p))
             
             #ax.set_xlim(0,obj.tlc[-1]/10)
@@ -325,7 +329,7 @@ def get_newton_jac2(obj,fn,tlc,init,k=None,het_lams=None,return_sol=False,
             plt.close()
     
     
-    mydiff = sol_unpert[-1,:] - sol_unpert[0,:]
+    mydiff = (sol_unpert[-1,:] - sol_unpert[0,:])
     Jdiff = J - np.identity(n)
         
     if exception:
