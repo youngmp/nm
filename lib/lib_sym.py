@@ -28,20 +28,20 @@ def generate_expansions(obj):
     psi = obj.psi
     
     for key in obj.var_names:
-        sg = Sum(psi**i_sym*Indexed('g'+key,i_sym),(i_sym,1,obj.miter))
-        sz = Sum(psi**i_sym*Indexed('z'+key,i_sym),(i_sym,0,obj.miter))
-        si = Sum(psi**i_sym*Indexed('i'+key,i_sym),(i_sym,0,obj.miter))
+        sg = Sum(psi**i_sym*Indexed('g'+key,i_sym),(i_sym,1,obj.miter-1))
+        sz = Sum(psi**i_sym*Indexed('z'+key,i_sym),(i_sym,0,obj.miter-1))
+        si = Sum(psi**i_sym*Indexed('i'+key,i_sym),(i_sym,0,obj.miter-1))
         
         obj.g['expand_'+key] = sg.doit()
         obj.z['expand_'+key] = sz.doit()
         obj.i['expand_'+key] = si.doit()
     
     obj.z['vec_psi'] = sym.zeros(obj.dim,1)
-    #obj.i['vec'] = sym.zeros(obj.dim,1)
+    obj.i['vec_psi'] = sym.zeros(obj.dim,1)
     
     for i,key in enumerate(obj.var_names):
         obj.z['vec_psi'][i] = [obj.z['expand_'+key]]
-    #    obj.i['vec'][i] = [obj.i['expand_'+key]]
+        obj.i['vec_psi'][i] = [obj.i['expand_'+key]]
     
     # for computing derivatives
     obj.dx_vec = sym.zeros(1,obj.dim) 
@@ -60,7 +60,7 @@ def generate_expansions(obj):
     obj.rule_d2g = {obj.dx_vec[i]:
                     obj.g['expand_'+k] for i,k in enumerate(obj.var_names)}
 
-def load_coupling_expansions(obj,recompute=True):
+def load_coupling_expansions(obj,recompute=False):
     """
     compute expansions related to the coupling function
     """
