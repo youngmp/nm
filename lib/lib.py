@@ -187,7 +187,7 @@ def load_dill(fnames):
     return templist
 
 def run_newton2(obj,fn,init,k,het_lams,max_iter=10,
-                rel_tol=1e-12,rel_err=10,backwards=True,eps=.5,
+                rel_tol=1e-12,rel_err=10,backwards=True,eps=1e-2,
                 exception=False,alpha=1,min_iter=5,
                 dense=True):
     if backwards:
@@ -233,7 +233,7 @@ def run_newton2(obj,fn,init,k,het_lams,max_iter=10,
                     ax.plot(t,sol[:,i],label=key)
                     ax.legend()
                  
-                axs[0].set_title('iter'+str(counter))
+                axs[0].set_title('{} iter {}'.format(str(fn),counter))
                 plt.tight_layout()
                 #plt.show(block=True)
                 #time.sleep(.1)
@@ -337,7 +337,8 @@ def get_newton_jac2(obj,fn,tlc,init,k=None,het_lams=None,return_sol=False,
         v[0] = 1
         Jdiff = np.append(Jdiff,v,axis=0)
         mydiff = np.append(mydiff,0)
-        dx,residuals,rank,s = np.linalg.lstsq(Jdiff, mydiff)
+        dx,residuals,rank,s = np.linalg.lstsq(Jdiff, mydiff,
+                                              rcond=None)
     
     else:
         dx = np.linalg.solve(Jdiff, mydiff)
@@ -508,7 +509,7 @@ def generate_fnames(obj,model_pars='',coupling_pars=''):
     
     
     """    
-
+    c_pars = coupling_pars
 
     for i in range(obj.N):
         
@@ -523,7 +524,7 @@ def generate_fnames(obj,model_pars='',coupling_pars=''):
         val = '{}p{}_dat_{}{}{}_NA={}_piter={}_N={}.txt'
         
         obj.p[i]['dat_fnames'] = [val.format(obj.dir,i,k,model_pars,
-                                             c_pars,obj.NA,obj.p_iter,
+                                             c_pars,obj.NH,obj.p_iter,
                                              obj.N)
                                   for k in range(obj.miter)]
 
@@ -534,7 +535,7 @@ def generate_fnames(obj,model_pars='',coupling_pars=''):
         
         val = '{}h{}_dat_{}{}{}_NA={}_piter={}_N={}.txt'
         obj.h[i]['dat_fnames'] = [val.format(obj.dir,i,k,model_pars,
-                                             c_pars,obj.NA,obj.p_iter,
+                                             c_pars,obj.NH,obj.p_iter,
                                              obj.N)
                                   for k in range(obj.miter)]
 
@@ -546,6 +547,24 @@ def generate_fnames(obj,model_pars='',coupling_pars=''):
                                         for k in range(obj.miter)]
 
 
+
+    # messy but keep it for now
+    for key in obj.system.var_names:
+        for i in range(obj.N):
+            obj.k[i]['sym_fnames_'+key] = []
+
+            for j in range(obj.N):
+                val = '{}k{}{}{}_sym_{}.d'
+                obj.k[i]['sym_fnames_'+key].append([val.format(obj.dir,key,i,j,k)
+                                                    for k in range(obj.miter)])
+                
+    for i in range(obj.N):
+        obj.c[i]['sym_fname'] = []
+        for j in range(obj.N):
+            val = '{}c{}{}_N={}.d'
+            obj.c[i]['sym_fname'].append(val.format(obj.dir,i,j,obj.N))
+
+                
 def plot(obj,option='g1'):
     
     # check if option of the form 'g'+'int'
@@ -704,7 +723,7 @@ def plot(obj,option='g1'):
         ax.plot(B_array,obj.hodd['dat'][k])
         ax.set_xlabel('theta')
         ax.set_ylabel('H')
-        NA = obj.NA
+        NA = obj.NH
         NB = obj.NB
         Ns = obj.Ns
         #print(obj.Ns)
@@ -716,3 +735,98 @@ def plot(obj,option='g1'):
                  #+', piter='+str(p_iter[k]))
         ax.set_title(title)
         plt.tight_layout()
+
+
+
+def rhs_avg(t,y,a,eps=0,del1=0,miter=None):
+    """ for forcing only"""
+
+    if miter is None:
+        nn = a.system1.miter
+    else:
+        nn = miter
+    
+    th,ps = y
+    dth = 0
+    dps = a.system1.kappa_val*ps
+    
+    for i in range(nn):
+        dth += eps*ps**i*a.hz_lam[i](th)
+        dps += eps*ps**i*a.hi_lam[i](th)
+    dth -= del1/a._m[1]
+    return np.array([dth*a._n[1],dps*a._m[1]])
+
+def _redu(t,y,a,eps=.01,del1=0):
+    th,ps,tf = y
+    
+    u = a.system1.forcing_fn(tf)
+    
+    dth = 1 + eps*a.th_lam(th,ps)*u
+    dps = a.system1.kappa_val*ps + eps*a.ps_lam(th,ps)*u
+    dtf = 1 + del1/a._m[1]
+    return np.array([dth*a._n[1],dps*a._n[1],dtf*a._m[1]])
+
+
+def _redu_moving(t,y,a,eps=.01,del1=0):
+    th,ps,tf = y
+
+    tf_m = tf+a._m[1]*t
+    th_m = th+a._n[1]*t
+    
+    u = a.system1(tf_m)
+    
+    dth = eps*a.th_lam(th_m,ps)*u
+    dps = a.system1.kappa_val*ps + eps*a.ps_lam(th_m,ps)*u
+    dtf = a.om*del1/a._m[1]
+    return np.array([dth*a._n[1],dps*a._n[1],dtf*a._m[1]])
+
+
+def _redu_moving_avg(t,y,a,eps=.01,del1=0):
+
+    s,ds = np.linspace(0,2*np.pi*a._m[1],a.NH,retstep=True)
+    th,ps,tf = y
+
+    om = a._n[1]/a._m[1]
+    in1 = th-om*tf+om*s;
+    in2 = s
+
+    z = a.th_lam(in1,ps)
+    i = a.ps_lam(in1,ps)
+    u = a.system2(in2)
+    
+    dth = eps*np.sum(z*u)*ds/(2*np.pi*a._m[1])
+    dps = a.system1.kappa_val*ps + eps*np.sum(i*u)*ds/(2*np.pi*a._m[1])
+    dtf = del1
+    return np.array([dth*a._n[1],dps*a._n[1],dtf])
+
+def _redu_moving_avg2(t,y,a,eps=.01,del1=0):
+
+    t2,dt = np.linspace(0,2*np.pi,a.NH,retstep=True)
+    th,ps,tf = y
+
+    in1 = th+a._n[1]*t
+    in2 = tf+a._m[1]*t
+
+    in_arr1 = th+a._n[1]*t2
+    in_arr2 = tf+a._m[1]*t2
+
+    z_arr = a.th_lam(in_arr1,ps)
+    i_arr = a.ps_lam(in_arr1,ps)
+    u_arr = a.system2(in_arr2)
+
+    u = a.system2(in2)
+
+    dth = 0
+    dps = a.system1.kappa_val*ps
+    for i in range(a.system1.miter):
+        dth += np.pi*eps*ps**i*np.sum(a.z_exp[i](in_arr1)*u_arr)*dt/(2*np.pi)
+        #dps += np.pi*eps*ps**i*np.sum(i_arr*u_arr)*dt/(2*np.pi)
+        dps += np.pi*eps*ps**i*np.sum(a.i_exp[i](in_arr1)*u_arr)*dt/(2*np.pi)
+    
+    #dth = eps*np.sum(z_arr*u_arr)*dt/(2*np.pi)
+    #dps = a.system1.kappa_val*ps + eps*np.sum(i_arr*u_arr)*dt#/(2*np.pi)
+
+    #dth = eps*a.th_lam(in1,ps)*u
+    #dps = a.system1.kappa_val*ps + eps*a.ps_lam(in1,ps)*u
+    dtf = del1
+    return np.array([dth*a._n[1],dps*a._n[1],dtf])

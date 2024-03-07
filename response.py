@@ -7,11 +7,11 @@ and response functions.
 todo: need to check accuracy of response functions
 """
 
-from lib.fast_interp import interp1d
-from lib.interp_basic import interp_basic as interpb
+
 import lib.lib_sym as slib
 from lib import lib
 from lib import fnames
+from lib.fast_interp import interp1d
 
 import os
 import logging
@@ -38,13 +38,15 @@ imp_fn = implemented_function
 class Response(object):
     
     def __init__(self,var_names,
-                 pardict,
+                 
                  rhs,
-                 coupling,
                  init,
                  TN,
                  idx,
 
+                 coupling=None,
+
+                 pardict=None,
                  forcing_fn=None,
                  
                  dir_root='./data',
@@ -71,15 +73,20 @@ class Response(object):
                  max_iter=30,
                  rel_tol=1e-12,
 
-                 save_fig=False):
+                 save_fig=False,
 
+                 mode='nm'):
+            
+        var_names = copy.deepcopy(var_names)
+        pardict = copy.deepcopy(pardict)
+        
+        self.mode = mode
         self.save_fig = save_fig
         # if forcing, period is assumed known.
         self.forcing = False
         if not(forcing_fn is None):
             self.forcing_fn = forcing_fn
             self.forcing = True
-            self.T = 2*np.pi # default period
 
             self.syms = [symbols('f'+str(idx))]
             self.dsyms = [symbols('df'+str(idx))]
@@ -124,12 +131,11 @@ class Response(object):
         logging.basicConfig(filename=self.log_file,level=self.log_level,
                             format=FORMAT)
 
-
         for i in range(len(var_names)):
             var_names[i] += str(self.idx)
         self.var_names = var_names
         self.dim = len(self.var_names)
-
+        
         keys = list(pardict.keys())
 
         for key in keys:
@@ -146,7 +152,7 @@ class Response(object):
         
         self.method = method
 
-        self.pardict_val = {};self.rule_par = {}
+        self.rule_par = {}
         self.pardict_sym = {}
         for (prop, value) in pardict.items():
 
@@ -157,82 +163,77 @@ class Response(object):
             # i.e. parname (sympy) to parname_val (float/int)
             self.rule_par.update({prop:value})
             self.pardict_sym.update({prop:symvar})
-            self.pardict_val.update({prop:value})
+
+        if self.forcing:
+            self.pardict_sym.update({'omf':symbols('omf')})
             
-        
         assert(not(model_name is None))
-        self.om_fix = 'om_fix'+str(idx)
-        assert(self.om_fix in pardict)
-        assert(type(self.om_fix) is str)
-        
-        if not(self.forcing):
+        self.om_fix_key = 'om_fix'+str(idx)
+        assert(self.om_fix_key in pardict)
+        assert(type(self.om_fix_key) is str)
+
+
+        self.model_name = model_name
+
+        ########### create directories
+        if not(os.path.isdir(self.dir_root)):
+            os.mkdir(self.dir_root)
+
+        self.dir1 = self.dir_root+'/'+self.model_name+'/'
+
+        if not(os.path.isdir(self.dir1)):
+            os.mkdir(self.dir1)
+
+        ########## define dicts
+        self.lc = {};self.g = {}
+        self.z = {};self.i = {}
+        self.G = {};self.K = {}
+        self.p = {};self.h = {}
+        self._H0 = {} # for mean values
+
+        self.t = symbols('t')
+
+        self.eye = np.identity(self.dim)
+        self.psi, self.eps, self.kappa = sym.symbols('psi eps kappa')
+
+        self.syms = []; self.dsyms = []
+        for j,name in enumerate(var_names):
+            self.syms.append(symbols(name))
+            self.dsyms.append(symbols('d'+name))
+
+        #self.x_vec = sym.Matrix(self.syms)
+        #self.dx_vec = sym.Matrix(self.dsyms)
+        #### load fnames
+        fnames.load_fnames_response(self,model_pars=self.pars_for_fname)
+
+        ########## calculate stuff
+        self.load_lc()
+
+
+        slib.generate_expansions(self)
+        slib.load_coupling_expansions(self)
+
+        # make rhs callable
+        self.rhs_sym = rhs(0,self.syms,self.pardict_sym,
+                           option='sym',idx=self.idx)
+        slib.load_jac_sym(self) # callable jac
+
+        # get monodromy matrix
+        self.load_monodromy()
+
+        # get heterogeneous terms for g, floquet e. fun.
+        self.load_g_sym()
+
+        # get g
+        self.load_g()
+
+        # get het. terms for z and i
+        self.load_het_sym()
+
+        # get iPRC, iIRC.
+        self.load_z()
+        self.load_i()
             
-
-            self.model_name = model_name
-
-            ########### create directories
-            if not(os.path.isdir(self.dir_root)):
-                os.mkdir(self.dir_root)
-
-            self.dir1 = self.dir_root+'/'+self.model_name+'/'
-
-            if not(os.path.isdir(self.dir1)):
-                os.mkdir(self.dir1)
-
-            ########## define dicts
-            self.lc = {};self.g = {}
-            self.z = {};self.i = {}
-            self.G = {};self.K = {}
-            self.p = {};self.h = {}
-            self._H0 = {} # for mean values
-
-            self.t = symbols('t')
-
-            self.eye = np.identity(self.dim)
-            self.psi, self.eps, self.kappa = sym.symbols('psi eps kappa')
-
-            self.syms = []; self.dsyms = []
-            for j,name in enumerate(var_names):
-                self.syms.append(symbols(name))
-                self.dsyms.append(symbols('d'+name))
-
-            #self.x_vec = sym.Matrix(self.syms)
-            #self.dx_vec = sym.Matrix(self.dsyms)
-            #### load fnames
-            fnames.load_fnames_response(self,model_pars=self.pars_for_fname)
-
-            ########## calculate stuff
-            self.load_lc()
-
-            
-
-
-            slib.generate_expansions(self)
-            slib.load_coupling_expansions(self)
-
-            # make rhs callable
-            self.rhs_sym = rhs(0,self.syms,self.pardict_sym,
-                               option='sym',idx=self.idx)
-            slib.load_jac_sym(self) # callable jac
-
-
-
-            # get monodromy matrix
-            self.load_monodromy()
-
-            # get heterogeneous terms for g, floquet e. fun.
-            self.load_g_sym()
-
-            # get g
-            self.load_g()
-
-            # get het. terms for z and i
-            self.load_het_sym()
-
-            # get iPRC, iIRC.
-            self.load_z()
-            self.load_i()
-    
     def load_lc(self):
 
         self.lc['dat'] = []
@@ -240,8 +241,6 @@ class Response(object):
         for key in self.var_names:
             self.lc['imp_'+key] = []
             self.lc['lam_'+key] = []
-
-        
 
         file_dne = not(os.path.isfile(self.lc_fname))
 
@@ -263,16 +262,24 @@ class Response(object):
             z = np.loadtxt(self.lc_fname)
 
         # normalize period
-        self.pardict[self.om_fix] = z[-1,0]/(2*np.pi)
+        if self.mode == 'nm':
+            self.T = 2*np.pi
+            
+            self.pardict[self.om_fix_key] = z[-1,0]/self.T
+            self.rule_par[self.om_fix_key] = z[-1,0]/self.T
+
+            self.T_old = z[-1,0]
+            self.lc['t_old'] = z[:,0]
+
+        else:
+            self.T = z[-1,0]
+
+        print('self.T',self.T,'omfix',self.pardict[self.om_fix_key])
+
+        self.tlc,self.dtlc = np.linspace(0,self.T,self.TN,retstep=True)
+        self.lc['t'] = self.tlc
+        
         self.lc['dat'] = z[:,1:]
-
-        self.T_old = z[-1,0]
-        self.lc['t_old'] = z[:,0]
-
-        self.T = 2*np.pi
-        self.lc['t'] = 2*np.pi*z[:,0]/z[-1,0]
-        self.tlc = np.linspace(0,2*np.pi,self.TN)
-
         self.init = z[0,1:]
 
         logging.debug('* LC period = '+str(self.T))
@@ -281,10 +288,8 @@ class Response(object):
         imp_lc = sym.zeros(self.dim)
         for i,key in enumerate(self.var_names):
 
-            tt = self.lc['t'];dtt = tt[1]-tt[0]
-            fn = interp1d(tt[0],tt[-2],dtt,self.lc['dat'][:-1,i],p=True,k=5)
+            fn = interp1d(self.tlc[0],self.tlc[-2],self.dtlc,self.lc['dat'][:-1,i],p=True,k=5)
             
-            #fn = interpb(self.lc['t'],self.lc['dat'][:,i],self.T)
             imp = imp_fn('lc'+key+'_'+str(i),self.fmod(fn))
             
             self.lc['imp_'+key] = imp_fn(key,fn)
@@ -303,10 +308,7 @@ class Response(object):
         for j,key in enumerate(self.var_names):
             self.rule_lc_local[self.syms[j]] = self.lc['imp_'+key](self.t)
 
-    def generate_lc(self,max_time=500,
-                    method='LSODA',
-                    tol_root=1e-13
-                    ):
+    def generate_lc(self,max_time=5000,method='LSODA',tol_root=1e-13):
         """
         generate limit cycle data for system
         system: dict. 
@@ -325,9 +327,10 @@ class Response(object):
                         self.init[:-1],
                         args=(pardict,'value',self.idx),
                         method=method,
+                        dense_output=True,
                         rtol=1e-12,atol=1e-12)
 
-        if False:
+        if self.save_fig:
             if not(os.path.exists('figs_temp')):
                 os.makedirs('figs_temp')
             fig = plt.figure()
@@ -337,22 +340,40 @@ class Response(object):
 
         tn = len(sol.y.T)
 
-        # find max index after ignoring first 20% of simulation time
-        # avoids transients.
-        peak_idxs = sp.signal.find_peaks(sol.y.T[int(.2*tn):,0])[0]
+        peak_idxs = sp.signal.find_peaks(sol.y.T[:,0])[0]
+        
         maxidx = peak_idxs[-2]
         maxidx_prev = peak_idxs[-3]
+
+        def sol_min(t):
+            return -sol.sol(t)[0]
+
+        # get stronger estimates of max values
+        pad1lo = (sol.t[maxidx]-sol.t[maxidx-1])/2
+        pad1hi = (sol.t[maxidx+1]-sol.t[maxidx])/2
+        bounds1 = [sol.t[maxidx]-pad1lo,sol.t[maxidx]+pad1hi]
+        res1 = sp.optimize.minimize_scalar(sol_min,bounds=bounds1)
+
+        pad2lo = (sol.t[maxidx_prev]-sol.t[maxidx_prev-1])/2
+        pad2hi = (sol.t[maxidx_prev+1]-sol.t[maxidx_prev])/2
+        bounds2 = [sol.t[maxidx_prev]-pad2lo,sol.t[maxidx_prev]+pad2hi]
+        res2 = sp.optimize.minimize_scalar(sol_min,bounds=bounds2)
 
         #maxidx = np.argmax(sol.y.T[int(.2*tn):,0])+int(.2*tn)
         #maxidx_prev = np.argmax(sol.y.T[int(.2*tn):maxidx-1,0])+int(.2*tn)
 
         # estimate initial time
-        T_init = sol.t[maxidx] - sol.t[maxidx_prev]        
-        init = np.append(sol.y.T[maxidx,:],T_init)
+        #T_init = sol.t[maxidx] - sol.t[maxidx_prev]
+        #init = np.append(sol.y.T[maxidx,:],T_init)
+        
+        T_init = res1.x - res2.x
+        init = np.append(sol.sol(res1.x),T_init)
+
+        print('t init',T_init)
 
         counter = 0
-
         while np.linalg.norm(dy) > tol_root:
+        
             J = np.zeros((self.dim+1,self.dim+1))
             t = np.linspace(0,init[-1],self.TN)
 
@@ -407,9 +428,10 @@ class Response(object):
                                          'value',self.idx),0)
 
             sol = solve_ivp(self.rhs,[0,init[-1]],init[:-1],
-                             method=self.method,
+                            method=self.method,
                             rtol=1e-13,atol=1e-13,
-                             args=(pardict,'value',self.idx))
+                            args=(pardict,'value',self.idx),
+                            t_eval=t)
 
             y_final = sol.y.T[-1,:]
 
@@ -426,7 +448,6 @@ class Response(object):
 
         # find index of peak voltage and initialize.
         peak_idx = np.argmax(sol.y.T[:,0])
-
         init = sol.y.T[peak_idx,:]
 
         # run finalized limit cycle solution
@@ -454,11 +475,13 @@ class Response(object):
             r,c = np.shape(initm)
             init = np.reshape(initm,r*c)
 
-            sol = solve_ivp(self.monodromy,[0,self.T],init,
+            start = time.time();
+            sol = solve_ivp(self.monodromy,[0,self.tlc[-1]],init,
                             t_eval=self.tlc,
                             method=self.method,
                             rtol=1e-13,atol=1e-13)
-
+            
+            end = time.time();print('mon eval time',end-start)
             
             self.sol = sol.y.T
             self.M = np.reshape(self.sol[-1,:],(r,c))
@@ -600,12 +623,8 @@ class Response(object):
             
             for j,key in enumerate(self.var_names):
                 
-                tt = self.lc['t'];dtt = tt[1]-tt[0]
-                fn = interp1d(tt[0],tt[-2],dtt,data[:-1,j],p=True,k=5)
+                fn = interp1d(self.tlc[0],self.tlc[-2],self.dtlc,data[:-1,j],p=True,k=5)
                 imp = imp_fn('g'+key+'_'+str(i),fn)
-                
-                #fn = interpb(self.tlc,data[:,j],self.T)
-                #imp = imp_fn('g'+key+'_'+str(i),self.fmod(fn))
                 
                 self.g['imp_'+key].append(imp)
                 self.g['lam_'+key].append(fn)                
@@ -654,10 +673,10 @@ class Response(object):
         if k == 1:
             # pick correct normalization
             init = copy.deepcopy(self.g1_init)
-            eps = 1e-4
+            eps = 1e-7
         else:
             init = np.zeros(self.dim)
-            eps = 1e-4
+            eps = 1e-7
             init = lib.run_newton2(self,self._dg,init,k,het_vec,
                                   max_iter=self.max_iter,eps=eps,
                                   rel_tol=self.rel_tol,rel_err=10,
@@ -719,8 +738,7 @@ class Response(object):
             
             for j,key in enumerate(self.var_names):
 
-                tt = self.lc['t'];dtt = tt[1]-tt[0]
-                fn = interp1d(tt[0],tt[-2],dtt,data[:-1,j],p=True,k=1)
+                fn = interp1d(self.tlc[0],self.tlc[-2],self.dtlc,data[:-1,j],p=True,k=5)
                 imp = imp_fn('z'+key+'_'+str(i),fn)
                 
                 self.z['imp_'+key].append(imp)
@@ -788,7 +806,7 @@ class Response(object):
         
         if k == 0:
             # normalize
-            dlc = self.rhs(0,self.lc_vec(0)[0],self.pardict_val,
+            dlc = self.rhs(0,self.lc_vec(0)[0],self.pardict,
                            'value',self.idx)
             zu = zu/(np.dot(dlc,zu[0,:]))*2*np.pi/self.T
             
@@ -818,7 +836,7 @@ class Response(object):
 
                 het_vec = self.interp_lam(i,self.i,fn_type='i')
                 data = self.generate_i(i,het_vec)
-                np.savetxt(self.i['dat_fnames'][i],data)
+                np.savetxt(fname,data)
                 
             else:
                 data = np.loadtxt(fname)
@@ -830,12 +848,8 @@ class Response(object):
             
             for j,key in enumerate(self.var_names):
 
-                tt = self.lc['t'];dtt = tt[1]-tt[0]
-                fn = interp1d(tt[0],tt[-2],dtt,data[:-1,j],p=True,k=5)
+                fn = interp1d(self.tlc[0],self.tlc[-2],self.dtlc,data[:-1,j],p=True,k=5)
                 imp = imp_fn('i'+key+'_'+str(i),fn)
-                
-                #fn = interpb(self.tlc,data[:,j],self.T)
-                #imp = imp_fn('i'+key+'_'+str(i),self.fmod(fn))
                 
                 self.i['imp_'+key].append(imp)
                 self.i['lam_'+key].append(fn)
@@ -938,7 +952,7 @@ class Response(object):
                 z00.append(self.z[key][0](0))
                 i00.append(self.i[key][0](0))
                 
-            F = self.rhs(0,lc0,self.pardict_val,'value',self.idx)
+            F = self.rhs(0,lc0,self.pardict,'value',self.idx)
             g1 = np.array(g10)
             z0 = np.array(z00)
             i0 = np.array(i00)
@@ -958,8 +972,11 @@ class Response(object):
                             rtol=self.rtol,atol=self.atol,
                             dense_output=True)
 
+
+            #iu = sol.y.T[::-1,:]
             if backwards:
-                iu = sol.y.T[::-1,:]                
+                iu = sol.y.T[::-1,:]
+                
             else:
                 iu = sol.y.T
 
@@ -1182,14 +1199,10 @@ class Response(object):
             else:
                 y = lam(self.tlc)
             
-            tt = self.lc['t'];dtt = tt[1]-tt[0]
-            fn = interp1d(tt[0],tt[-2],dtt,y[:-1],p=True,k=5)
-            
+            fn = interp1d(self.tlc[0],self.tlc[-2],self.dtlc,y[:-1],p=True,k=5)
             imp = imp_fn(key,fn)
             
             # save as implemented fn
-            #interp = interpb(self.lc['t'],y,self.T)
-            #imp = imp_fn(key,self.fmod(interp))
             het_imp[i] = imp(self.t)
             
         het_vec = lambdify(self.t,het_imp,modules='numpy')
@@ -1235,8 +1248,9 @@ class Response(object):
         plt.close()
         
 
-    def __call__(self,t,del1=0,option='add'):
+    def __call__(self,th,option='add'):
         if option == 'add':
-            om = self.pardict['om'+str(self.idx)]
-            a = self.pardict['amp'+str(self.idx)]
-            return self.forcing_fn(t,om+del1)
+            #om = self.pardict['om'+str(self.idx)]
+            #a = self.pardict['amp'+str(self.idx)]
+            return self.coupling(self.forcing_fn(th),self.pardict)
+        

@@ -24,18 +24,18 @@ from cgl_thalamic import rhs_cgl
 import os
 import argparse
 
-def coupling_cgl(vars_pair,pdict,option='val',idx=''):
+
+def rhs(t,z,pdict,option='value',idx=''):
     """
-        
-    Synaptic coupling function between oscillators.
-    
-    This function is $G_2(X,Y)$
+    Right-hand side of the Complex Ginzburgh-Landau (CGL) model from
+    Wilson and Ermentrout RSTA 2019 
 
     Parameters
 
-        vars_pair : list or array
-            contains state variables from oscillator A and B, e.g.,
-            (x,y,wc,v,h,r,wt)
+        t : float or sympy object.
+            time
+        z : array or list of floats or sympy objects.
+            state variables of the cgl model, x,y,wc
         pdict : dict of flots or sympy objects.
             parameter dictionary pdict[key], val. key is always a string
             of the parameter. val is either the parameter value (float) or 
@@ -46,60 +46,116 @@ def coupling_cgl(vars_pair,pdict,option='val',idx=''):
             is 'val'.
 
     Returns
+
         numpy array or sympy Matrix
-            returns numpy array if option == 'val'. 
+            returns numpy array if option == 'val'
             returns sympy Matrix if option == 'sym'
 
     """
     
-    x,y,qc,f = vars_pair
+    if option in ['val','value']:
+        exp = np.exp
+    elif option in ['sym','symbolic']:
+        exp = sym.exp
+
     idx = str(idx)
+    x,y = z
+
+    R2 = x**2 + y**2
+    mu = pdict['mu'+idx];sig = pdict['sig'+idx];rho = pdict['rho'+idx]
     omc = pdict['om'+idx]
     om_fix = pdict['om_fix'+idx]
 
     if option in ['val','value']:
-        return -om_fix*omc*np.array([f,0,0])
+        C = 1#2*np.pi
+        return om_fix*omc*np.array([C*sig*x*(1-R2)-y*(C*(1+rho*(R2-1))),
+                                    C*sig*y*(1-R2)+x*(C*(1+rho*(R2-1)))])
+    
     elif option in ['sym','symbolic']:
-        return -om_fix*omc*Matrix([f,0,0])
+        C = 1#2*sym.pi
+        return om_fix*omc*Matrix([C*sig*x*(1-R2)-y*(C*(1+rho*(R2-1))),
+                                  C*sig*y*(1-R2)+x*(C*(1+rho*(R2-1)))])
 
 
+def rhs_cgl_old(t,z,pdict,option='value',idx=''):
+    """
+    Right-hand side of the Complex Ginzburgh-Landau (CGL) model from
+    Wilson and Ermentrout RSTA 2019 
+
+    Parameters
+
+        t : float or sympy object.
+            time
+        z : array or list of floats or sympy objects.
+            state variables of the cgl model, x,y,wc
+        pdict : dict of flots or sympy objects.
+            parameter dictionary pdict[key], val. key is always a string
+            of the parameter. val is either the parameter value (float) or 
+            the symbolic version of the parameter key.
+        option : string.
+            Set to 'val' when inputs, t, z, pdict are floats. Set to
+            'sym' when inputs t, z, pdict are sympy objects. The default
+            is 'val'.
+
+    Returns
+
+        numpy array or sympy Matrix
+            returns numpy array if option == 'val'
+            returns sympy Matrix if option == 'sym'
+
+    """
+    
+    if option in ['val','value']:
+        exp = np.exp
+    elif option in ['sym','symbolic']:
+        exp = sym.exp
+
+    idx = str(idx)
+    x,y = z
+    R2 = x**2 + y**2
+    mu = pdict['mu'+idx];sig = pdict['sig'+idx];rho = pdict['rho'+idx]
+    omc = pdict['om'+idx]
+    om_fix = pdict['om_fix'+idx]
+
+    if option in ['val','value']:
+        return om_fix*omc*np.array([sig*x*(mu-R2)-y*(1+rho*(R2-mu)),
+                                    sig*y*(mu-R2)+x*(1+rho*(R2-mu))])
+    
+    elif option in ['sym','symbolic']:
+        return om_fix*omc*Matrix([sig*x*(mu-R2)-y*(1+rho*(R2-mu)),
+                                  sig*y*(mu-R2)+x*(1+rho*(R2-mu))])
+
+
+def ff(t):
+    return np.sin(t)
+    
 def main():
 
-    pd2 = {'om':1,'amp':1}
-    # default period must be 2*np.pi
-    system2 = rsp(var_names=[],
-                  pardict=pd2,rhs=None,init=None,
-                  coupling=None,
-                  model_name='f1',
-                  forcing_fn=-np.sin,
-                  idx=1,
-                  TN=0)
-
-    pd1 = {'q':1,'d':.9,'sig':.1,'rho':.15,'mu':.15,
-           'om':1,'om_fix':1,'alc':3,'bec':2,'esyn':0}
+    pd1 = {'sig':.08,'rho':.12,'mu':1,
+           'om':1,'om_fix':1}
     
-    system1 = rsp(var_names=['x','y','w'],
-                  pardict=pd1,rhs=rhs_cgl,
-                  init=np.array([.333,0,0,2*np.pi]),
+    system1 = rsp(var_names=['x','y'],
+                  pardict=pd1,rhs=rhs,
+                  init=np.array([1,0,2*np.pi]),
                   TN=2000,
                   idx=0,
-                  model_name='cgl0',
+                  model_name='cglf0',
+                  forcing_fn=ff,
                   
                   recompute_list=[],
+                  g_forward=False,
                   z_forward=False,
                   i_forward=False,
-                  i_bad_dx=False,
-                  coupling=coupling_cgl)
-
+                  i_bad_dx=True,
+                  max_iter=100,
+                  rel_tol=1e-9,
+                  trunc_order=4,
+                  coupling=coupling)
     
-    a = nm(system1,system2,
-           recompute_list=['k_cgl0',
-                           'p_cgl0',
-                           'h_cgl0'],
+    a = nm(system1,None,
            #recompute_list=recompute_list,
-           _n=('om0',1),_m=('om1',2),
-           NP=100)
-
+           _n=('om0',1),_m=('om1',1),
+           NP=200,NH=200)
 
     
     fig,axs = plt.subplots(3,1)

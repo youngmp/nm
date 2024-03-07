@@ -338,4 +338,5 @@ def load_jac_sym(obj):
     
     rule = {**obj.rule_lc_local,**obj.rule_par}
     # callable jacobian matrix evaluated along limit cycle
+    
     obj.jaclc = lambdify((obj.t),obj.jac_sym.subs(rule))
