@@ -146,11 +146,10 @@ def main():
                   g_forward=False,
                   z_forward=False,
                   i_forward=False,
-                  i_bad_dx=True,
+                  i_bad_dx=[False,True,False,False],
                   max_iter=100,
                   rel_tol=1e-9,
-                  trunc_order=4,
-                  coupling=coupling)
+                  trunc_order=4)
     
     a = nm(system1,None,
            #recompute_list=recompute_list,
@@ -158,15 +157,6 @@ def main():
            NP=200,NH=200)
 
     
-    fig,axs = plt.subplots(3,1)
-
-    x = np.linspace(0,2*np.pi*a._m[1],1000)
-    for i in range(3):
-        axs[i].axhline(0,0,2*np.pi*a._m[1],color='gray')
-        axs[i].plot(x,system1.h['lam'][i](x))
-
-    plt.savefig('figs_temp/h_diffs.png')
-    plt.close()
     
     
 if __name__ == "__main__":
