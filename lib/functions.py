@@ -5,6 +5,9 @@ library for various functions
 import numpy as np
 
 
+def gau(x,s=1):
+    return np.exp(-(x/s)**2)
+
 def p(x,s=1):
     """
     Unnormalized periodized Gaussian.
