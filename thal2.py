@@ -118,6 +118,7 @@ def coupling(vars_pair,pdict,option='val',idx=''):
             returns sympy Matrix if option == 'sym'
 
     """
+    
     v,h,r,w,v2,h2,r2,w2 = vars_pair
     idx = str(idx)
     omt = pdict['om'+idx]

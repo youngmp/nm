@@ -131,6 +131,7 @@ class nmCoupling(object):
                  gij_parallel=True,processes=6,
                  chunksize=1,chunk_g=1,process_g=5,
                  log_level='CRITICAL',log_file='log_nm.log',
+                 lowdim=False,
                  
                  recompute_list=[]):
 
@@ -151,6 +152,7 @@ class nmCoupling(object):
         
         self.system1 = system1;self.system2 = system2
         self.recompute_list = recompute_list
+        self.lowdim = lowdim
 
         self.trunc_deriv = trunc_deriv
         self._n = _n;self._m = _m
@@ -170,7 +172,7 @@ class nmCoupling(object):
 
         # discretization for p_X,p_Y
         self.NP = NP
-        self.an,self.dan = np.linspace(0,2*np.pi,NP,
+        self.an,self.dan = np.linspace(0,2*np.pi*self._n[1],NP*self._n[1],
                                        retstep=True,endpoint=False)
 
         # discretization for H_X,H_Y
@@ -291,6 +293,7 @@ class nmCoupling(object):
             self.load_h(system1,system2,i)
             self.load_h(system2,system1,i)
 
+            
     def _init_force(self,system1):
         # system 2 should be forcing function
         
@@ -301,6 +304,15 @@ class nmCoupling(object):
         slib.load_coupling_expansions(system1)
 
         self.load_force(system1)
+        if not(self.lowdim):
+
+            self.generate_p_force_sym()
+            self.generate_h_force_sym()
+
+            print('* Loading p...')
+            for k in range(self.system1.miter):
+                self.load_p(system1,system1,k)
+                self.load_h(system1,system1,k)
 
     def load_force(self,system1):
 
@@ -308,10 +320,6 @@ class nmCoupling(object):
         e1 = system1.z['vec_psi'][0].subs(system1.rule_z_local)
         e2 = system1.i['vec_psi'][0].subs(system1.rule_i_local)
 
-        print('e1,e2')
-        print(e1)
-        print(e2)
-        print('')
 
         # \mathcal{Z} and \mathcal{I} expansions in psi
         self.th_lam = lambdify(in1,e1)
@@ -340,20 +348,15 @@ class nmCoupling(object):
         for i in range(len(hz2_cs)):
             imp0 = hz2_cs[i].subs(system1.rule_z_local).subs(system1.t,ths[0])
             lam0 = lambdify(ths[0],imp0)
-            print('{} imp0 for z'.format(i),imp0)
+
             self.z_exp.append(lam0)
 
             imp0 = hi2_cs[i].subs(system1.rule_i_local).subs(system1.t,ths[0])
             lam0 = lambdify(ths[0],imp0)
             self.i_exp.append(lam0)
-
-            print('{} imp0 for i'.format(i),imp0)
         
         hz0_cs = hz0.coeffs()[::-1]
         self.hz0_lams = []
-
-        print('')
-        print('hz0,hi0,imp')
 
         oms0 = system1.pardict_sym['om0']
         oms1 = system1.pardict_sym['omf']
@@ -371,7 +374,6 @@ class nmCoupling(object):
             
             hz0_lam = lambdify([ths[0],system1.t],hz0_imp)
             self.hz0_lams.append(hz0_lam)
-            print(i,hz0_imp)
 
             if system1.save_fig:
                 tt = np.linspace(0,2*np.pi)
@@ -382,8 +384,6 @@ class nmCoupling(object):
 
         hi0_cs = hi0.coeffs()[::-1]
         self.hi0_lams = []
-
-        print('')
         
         for i in range(len(hi0_cs)):
             
@@ -411,10 +411,6 @@ class nmCoupling(object):
                             +'_'+str(nn)+str(mm)+'.png')
                 plt.close()
 
-            print(i,hi0_imp)            
-            
-        print('')
-
         s1,ds1 = np.linspace(0,2*np.pi,self.NH,retstep=True)
         s2,ds2 = np.linspace(0,2*np.pi*self._m[1],self.NH,retstep=True)
 
@@ -437,8 +433,57 @@ class nmCoupling(object):
 
             self.hz_lam.append(fnz)
             self.hi_lam.append(fni)
-            
 
+        #self.generate_p_force_sym()
+
+        
+        #data = self.generate_p_force(0)
+        
+        #self.generate_p_force(1)
+
+
+    def generate_p_force_sym(self):
+        # get expansion of $I$ in psi
+        # substitute expansion of psi in eps
+        # collect in powers of $\ve$.
+
+        f1 = sym.symbols('f1')
+        first_var = self.system1.var_names[0]
+        
+        tmp = self.system1.i[first_var+'_eps']*self.system1.eps
+        tmp = collect(tmp,self.system1.eps)
+        tmp = collect(expand(tmp),self.system1.eps)
+        
+        u = self.system1.forcing_fn
+        u_imp = imp_fn('uf',u)
+
+        rule = {**self.system1.rule_i,
+                **{f1:u_imp(self.system1.t)}}
+
+        for k in range(self.system1.miter):
+            self.system1.p['sym'][k] = tmp.coeff(self.system1.eps,k)
+            self.system1.p['sym'][k] *= u_imp(self.ths[1])
+
+    def generate_h_force_sym(self):
+        f1 = sym.symbols('f1')
+
+        first_var = self.system1.var_names[0]
+        tmp = self.system1.z[first_var+'_eps']
+        tmp = collect(tmp,self.system1.eps)
+        tmp = collect(expand(tmp),self.system1.eps)
+        
+        u = self.system1.forcing_fn
+        u_imp = imp_fn('uf',u)
+
+        rule = {**self.system1.rule_z,
+                **{f1:u_imp(self.system1.t)}}
+
+        for k in range(self.system1.miter):
+            self.system1.h['sym'][k] = tmp.coeff(self.system1.eps,k)
+            self.system1.h['sym'][k] *= u_imp(self.ths[1])
+
+
+            
     def load_k_sym(self,system1,system2):
         
         """
@@ -489,6 +534,8 @@ class nmCoupling(object):
             system1.K['sym'] = dill.load(open(system1.K['fname'],'rb'))
 
         system1.G['vec'] = sym.zeros(system1.dim,1)
+
+        
 
         for i,key in enumerate(system1.var_names):
             system1.G['vec'][i] = [system1.G['sym'][key]]
@@ -545,6 +592,8 @@ class nmCoupling(object):
         for key_idx,key in enumerate(system2.var_names):
             rule.update({system2.dsyms[key_idx]:system2.g[key+'_eps']})
 
+        
+
         for key in system1.var_names:
             system1.G['sym'][key] = system1.G['sym'][key].subs(rule)
 
@@ -596,34 +645,43 @@ class nmCoupling(object):
         fname = system1.p['fnames_data'][k]
         file_dne = not(os.path.isfile(fname))
 
+        
         if 'p_data_'+system1.model_name in self.recompute_list\
            or file_dne:
-            print('* Computing p...')
+            
             
             p_data = self.generate_p(system1,system2,k)
 
-            if not(self.forcing):
-                p_interp0 = interp2d([0,0],[2*np.pi,2*np.pi],
+            #if not(self.forcing):
+            p_interp0 = interp2d([0,0],[2*np.pi*self._n[1],
+                                        2*np.pi*self._m[1]],
                                  [self.dan,self.dan],
                                  p_data,k=3,p=[True,True])
 
-                # fix indexing (see check_isostable.ipynb)
-                #X,Y = np.meshgrid(self.an,self.an,indexing='ij')
-                #p_data = p_interp0(X+Y*self.om,Y)
+            # fix indexing (see check_isostable.ipynb)
+            X,Y = np.meshgrid(self.an*self._n[1],
+                              self.an*self._m[1],
+                              indexing='ij')
+            p_data = p_interp0(X-self.om*Y,Y)
                 
             np.savetxt(system1.p['fnames_data'][k],p_data)
 
         else:
-            print('* Loading p...')
+            
             p_data = np.loadtxt(fname)
 
-        if self.forcing:
-            p_interp = interp2d([0,0],[2*np.pi,2*np.pi*self._m[1]],
-                                [self.dan,self.dan],
-                                p_data,k=3,p=[True,True])
-        else:
-            p_interp = interp2d([0,0],[2*np.pi,2*np.pi],
-                                [self.dan,self.dan],
+        #if self.forcing:
+        #    p_interp = interp2d([0,0],[2*np.pi,2*np.pi*self._m[1]],
+        #                        [self.dan,self.dan],
+        #                        p_data,k=3,p=[True,True])
+        #else:
+        #    p_interp = interp2d([0,0],[2*np.pi,2*np.pi],
+        #                        [self.dan,self.dan],
+        #                        p_data,k=3,p=[True,True])
+
+        p_interp = interp2d([0,0],[2*np.pi*self._n[1],
+                                   2*np.pi*self._m[1]],
+                                [self.dan*self._n[1],self.dan*self._m[1]],
                                 p_data,k=3,p=[True,True])
 
         ta = self.ths[0];tb = self.ths[1]
@@ -658,7 +716,7 @@ class nmCoupling(object):
         NP = self.NP
         if k == 0:
             #pA0 is 0 (no forcing function)
-            return np.zeros((NP,NP))
+            return np.zeros((NP,self._m[1]*NP))
 
         kappa1 = system1.kappa_val
 
@@ -677,17 +735,7 @@ class nmCoupling(object):
         if ph_imp1 == 0:
             return np.zeros((NP,NP))
         lam1 = lambdify(self.ths,ph_imp1)
-        het1 = np.zeros((NP,int(self._m[1]*NP)))
-
-        # get lam1 for testing
-        if True:
-            X,Y = np.meshgrid(self.an,self.an,indexing='ij')
-
-            fig,axs = plt.subplots()
-            im = axs.imshow(lam1(X,Y))
-            plt.colorbar(im,ax=axs)
-            plt.savefig('figs_temp/lam_heta_'+str(k)+'.png')
-            plt.close()
+        data = np.zeros((int(self._n[1]*NP),int(self._m[1]*NP)))
                    
         an=self.an;dan=self.dan;pfactor=self.pfactor
         NP=self.NP;s=np.arange(0,self.T*pfactor*self._m[1],dan)
@@ -700,11 +748,12 @@ class nmCoupling(object):
         
         for ll in range(len(an)):
 
-            f_in = np.fft.fft(lam1(an[ll]+self.om*s,+s))
-            conv = np.fft.ifft(f_in*g_in)            
-            het1[(a_i+ll)%NP,a_i] = conv[-NP:].real
+            f_in = np.fft.fft(lam1(an[ll]+fac*s,+s))
+            conv = np.fft.ifft(f_in*g_in)
+            #data[(a_i+ll)%NP,a_i] = conv[-NP:].real
+            data[ll,:] = conv[-self._m[1]*NP:].real
 
-        return fac*het1*dan
+        return data*dan
     
     
     def load_h_sym(self,system):
@@ -807,8 +856,8 @@ class nmCoupling(object):
         n=self._n[1];m=self._m[1]
 
         # calculate mean
-        X,Y = np.meshgrid(self.an,self.an,indexing='ij')
-        system1._H0[k] = np.sum(h_lam(X,Y))*self.dan**2/(2*np.pi)**2
+        X,Y = np.meshgrid(self.an,self.an*self._m[1],indexing='ij')
+        system1._H0[k] = np.sum(h_lam(X,Y))*self.dan**2/(2*np.pi*self._m[1])**2
 
         # calculate coupling function
         h = np.zeros(self.NH)
@@ -816,7 +865,7 @@ class nmCoupling(object):
             #h[j] = np.sum(h_lam(bn[j] + self.om*bn,bn))
             h[j] = np.sum(h_lam(bn[j] + self.om*bn,bn))
 
-        return h/(2*np.pi*self._m[1])*dbn*self.om
+        return h/(2*np.pi*self._m[1])*dbn
         
         
     def fast_interp_lam(self,fn):
