@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def rhs_avg(t,y,a,eps=0,del1=0,miter=None):
+def rhs_avg_2d(t,y,a,eps=0,del1=0,miter=None):
     """ for forcing only. 2d."""
 
     if miter is None:
@@ -24,7 +24,7 @@ def rhs_avg(t,y,a,eps=0,del1=0,miter=None):
     dth -= del1/a._m[1]
     return np.array([dth*a._n[1],dps*a._m[1]])
 
-def rhs_avg_ld(t,th,a,eps=0,del1=0,miter=None):
+def rhs_avg_1d(t,th,a,eps=0,del1=0,miter=None):
     """ for forcing only. 1d"""
 
     if miter is None:
