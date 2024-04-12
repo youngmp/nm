@@ -56,7 +56,7 @@ def freq_est(t,y,transient=.5,width=10,prominence=.15,return_idxs=False):
     else:
         return freq
 
-def pl_exist_ld(eps,del1,a,th_init=0,return_data=False):
+def pl_exist_1d(eps,del1,a,th_init=0,return_data=False):
     """
     
     """

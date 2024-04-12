@@ -1,10 +1,14 @@
 """
 Generate figures for strong coupling paper
+
+TODO: INCLUDE BOTH THALAMIC EXAMPLES. NEED TO SHOW
+METHOD STILL WORKS WELL NEAR BIFURCATIONS?
+BORING EXAMPLE SO MAYBE PUT IN APPENDIX.
 """
 
 
 # user-defined
-import nmCoupling as nm
+import nmCoupling_old as nm
 import response as rp
 
 import cgl1 as c1
@@ -81,29 +85,50 @@ kw_cgl_template = {'var_names':['x','y'],
 
 pd_thal_template = {'gL':0.05,'gna':3,'gk':5,
                     'gt':5,'eL':-70,'ena':50,
-                    'ek':-90,'et':0,'esyn':-1,
+                    'ek':-90,'et':0,'esyn':0,
                     'c':1,'alpha':3,'beta':2,
                     'sigmat':0.8,'vt':-20,
-                    'ib':8.5,'om':1,'om_fix':1}
+                    'ib':3.5,'om':1,'om_fix':1}
 
 # default period must be 2*np.pi
 kw_thal_template = {'var_names':['v','h','r'],
                     'rhs':t1.rhs,
-                    'init':np.array([-.64,0.71,0.25,5]),
-                    'TN':2000,
+                    'init':np.array([-.64,0.71,0.25,10.6]),
+                    'TN':10000,
                     'idx':0,
                     'model_name':'thalf0',
-                    'trunc_order':4,
+                    'trunc_order':3,
                     'recompute_list':[],
                     'z_forward':False,
                     'i_forward':False,
-                    'i_bad_dx':True,
-                    'max_iter':20,
-                    'rtol':1e-12,
-                    'atol':1e-12,
+                    'i_bad_dx':[False,True,False,False,False,False],
+                    'max_iter':200,
+                    'rtol':1e-13,
+                    'atol':1e-13,
                     'rel_tol':1e-9,
                     'forcing_fn':g1,
                     'save_fig':False}
+
+pd_gw_template = {'v1':.84,'v2':.42,'v4':.35,'v6':.35,'v8':1,
+                  'k1':1,'k2':1,'k3':.7,'k4':1,'k5':.7,
+                  'k6':1,'k7':.35,'k8':1,'K':0.5,'kc':1,
+                  'n':6,'L':0,'eps':0,'om':1,'om_fix':1}
+
+kw_gw_template = {'var_names':['x','y','z','v'],
+                  'rhs':gt.rhs,
+                  'coupling':gt.coupling_gw,
+                  'init':np.array([.3882,.523,1.357,.4347,24.2]),
+                  'TN':2000,
+                  'trunc_order':2,
+                  'z_forward':False,
+                  'i_forward':False,
+                  'i_bad_dx':[False,True,False,False],
+                  'max_iter':20,
+                  'rtol':1e-12,
+                  'atol':1e-12,
+                  'rel_tol':1e-9,
+                  'save_fig':False}
+
 
 kw_sim = {'rtol':1e-7,'atol':1e-7,'method':'LSODA'}
 
@@ -301,29 +326,63 @@ def _full_thal1(t,y,a,eps=0,del1=0):
     out1 = t1.rhs(t,y,pd1,'val',0) + eps*ofix*omx*np.array([u,0,0])
     return np.array(list(out1))
 
-labeltemp = [r'$\psi$',r'$\mathcal{H}$',r'$t$']
+def _full_thal2(t,y,a,eps=0,del1=0):
+    pd1 = a.system1.pardict;pd2 = a.system2.pardict
+    y1 = y[:4];y2 = y[4:]
+    
+    c1 = t2.coupling(y,pd1,'val',0)
+    c2 = t2.coupling(list(y2)+list(y1),pd2,'val',1)
+    
+    out1 = t2.rhs(t,y1,pd1,'val',0) + eps*(del1 +c1)
+    out2 = t2.rhs(t,y2,pd2,'val',1) + eps*c2
+    return np.array(list(out1)+list(out2))
 
-def _setup_trajectories_plot():
+def _full_gt2(t,y,a,eps=0,del1=0):
+    pd1 = a.system1.pardict;pd2 = a.system2.pardict
+    y1 = y[:4];y2 = y[4:]
+    
+    c1 = gt.coupling_tm(y,pd1,'val',0)
+    c2 = gt.coupling_gw(list(y2)+list(y1),pd2,'val',1)
+    
+    out1 = t2.rhs(t,y1,pd1,'val',0) + eps*(del1 + c1)
+    out2 = gt.rhs(t,y2,pd2,'val',1) + eps*c2
+    return np.array(list(out1)+list(out2))
+
+labeltempf = [r'$\psi$',r'$\mathcal{H}$',r'$t$']
+labeltempc = [r'$\mathcal{H}$',r'$t$']
+
+def _setup_trajectories_plot(mode='f'):
     """
     plot arranged as 0 top left, 1 top right, 2 bottom left, 3 bottom right
     each object in axs is a 2x3 set of axis objects.
+
+    mode: 'f' is for forcing, 'c' is for coupling
     """
-    fig = plt.figure(figsize=(8,8))
 
-    kws = {'wspace':0.075,'hspace':0.075,'nrows':3,'ncols':2}
-    padw = .04;padh = .035
+    if mode == 'f':
+        w = 8;h = 8
+        nr1 = 3;nc1 = 2
+    elif mode == 'c':
+        w = 8;h = 6
+        nr1 = 2;nc1 = 2
+    
+    fig = plt.figure(figsize=(w,h))
 
-    nr1 = 3;nc1 = 2
-    gs1 = fig.add_gridspec(left=0.0, right=0.5-padw,bottom=0.5+padh,top=1,**kws)
+    kws = {'wspace':0.075,'hspace':0.075,'nrows':nr1,'ncols':nc1}
+    padw = .04;padh = .05
+    lo = 0.075
+    hi = 0.96
+
+    gs1 = fig.add_gridspec(left=lo, right=0.5-padw,bottom=0.5+padh,top=hi,**kws)
     axs1 = [[fig.add_subplot(gs1[i,j]) for j in range(nc1)] for i in range(nr1)]
 
-    gs2 = fig.add_gridspec(left=0.5+padw, right=1,bottom=0.5+padh,top=1,**kws)
+    gs2 = fig.add_gridspec(left=0.5+padw, right=hi,bottom=0.5+padh,top=hi,**kws)
     axs2 = [[fig.add_subplot(gs2[i,j]) for j in range(nc1)] for i in range(nr1)]
 
-    gs3 = fig.add_gridspec(left=0, right=.5-padw,bottom=0.,top=.5-padh,**kws)
+    gs3 = fig.add_gridspec(left=lo, right=.5-padw,bottom=lo,top=.5-padh,**kws)
     axs3 = [[fig.add_subplot(gs3[i,j]) for j in range(nc1)] for i in range(nr1)]
 
-    gs4 = fig.add_gridspec(left=.5+padw, right=1,bottom=0.,top=.5-padh,**kws)
+    gs4 = fig.add_gridspec(left=.5+padw, right=hi,bottom=lo,top=.5-padh,**kws)
     axs4 = [[fig.add_subplot(gs4[i,j]) for j in range(nc1)] for i in range(nr1)]
 
     axs = [np.asarray(axs1),np.asarray(axs2),np.asarray(axs3),np.asarray(axs4)]
@@ -335,17 +394,25 @@ def _setup_trajectories_plot():
     
     for k in range(len(axs)):
         axs[k][0,0].tick_params(**{**kwall,**kwb})
-        axs[k][1,0].tick_params(**{**kwall,**kwb})
-        
         axs[k][0,1].tick_params(**{**kwall,**kwl,**kwb})        
-        axs[k][1,1].tick_params(**{**kwall,**kwl,**kwb})
-
-        axs[k][2,1].tick_params(**{**kwall,**kwl})
         
+
+        if mode == 'f':
+            axs[k][2,1].tick_params(**{**kwall,**kwl})
+            axs[k][1,0].tick_params(**{**kwall,**kwb})
+            axs[k][1,1].tick_params(**{**kwall,**kwl,**kwb})
+
+        else:
+            axs[k][1,1].tick_params(**{**kwall,**kwl})
+            
         for i in range(nr1):
             
             axs[k][i,0].sharey(axs[k][i,1])
-            axs[k][i,0].set_ylabel(labeltemp[i],labelpad=0)
+
+            if mode == 'c':
+                axs[k][i,0].set_ylabel(labeltempc[i],labelpad=0)
+            else:
+                axs[k][i,0].set_ylabel(labeltempf[i],labelpad=0)
             for j in range(nc1):
                 axs[k][i,j].margins(x=0)
                 axs[k][i,j].set_xlim(0,2*np.pi)
@@ -363,70 +430,131 @@ def _setup_trajectories_plot():
 
 def draw_solutions(axs,a,T,eps,del1,pmax,pmin,init,full_rhs):
 
+    if '2' in full_rhs.__name__:
+        mode = 'c'
+    elif '1' in full_rhs.__name__:
+        mode = 'f'
+    else:
+        raise ValueError('RHS must include 1 (forcing) or 2 (couplng)')
+
     nr1,nc1 = axs.shape
     system1 = a.system1
 
-    kw1 = {'eps':eps,'a':a,'return_data':True,
-           'pmin':pmin,'pmax':pmax}
+    if mode == 'c':
+        system2 = a.system2
 
-    # 2d
-    for j in range(nc1):
-        co1,co2 = pl_exist(del1=del1[j],**kw1)
-        x_list,y_list = get_contour_data(co1)
-        for i in range(len(x_list)):
-            axs[0,j].plot(x_list[i],y_list[i],'k',lw=1)
+    kw1 = {'eps':eps,'a':a,'return_data':True,'pmin':pmin,'pmax':pmax}
 
-        x_list,y_list = get_contour_data(co2)
-        for i in range(len(x_list)):
-            axs[0,j].plot(x_list[i],y_list[i],'gray',lw=1,ls='--')
+    if mode == 'f':
+        d1_idx = 1
+        # 2d
+        for j in range(nc1):
+            co1,co2 = pl_exist(del1=del1[j],**kw1)
+            x_list,y_list = get_contour_data(co1)
+            for i in range(len(x_list)):
+                axs[0,j].plot(x_list[i],y_list[i],'k',lw=1)
+
+            x_list,y_list = get_contour_data(co2)
+            for i in range(len(x_list)):
+                axs[0,j].plot(x_list[i],y_list[i],'gray',lw=1,ls='--')
+    else:
+        d1_idx = 0
 
     # 1d
     for j in range(nc1):
         x = np.linspace(0,2*np.pi,200)
-        y = rhs_avg_1d(0,x,a,eps,del1[j])
-        axs[1,j].plot(x,y,color='k',lw=1)
-        axs[1,j].axhline(0,x[0],x[-1],color='gray',lw=1,ls='--')
+
+        if mode == 'f':
+            y = rhs_avg_1d(0,x,a,eps[j],del1[j])
+        else:
+            y = rhs_avg_1dc(0,x,a,eps[j],del1[j])
+        axs[d1_idx,j].plot(x,y,color='k',lw=1)
+        axs[d1_idx,j].axhline(0,x[0],x[-1],color='gray',lw=1,ls='--')
 
     # trajectory
     dt = .02;
     t = np.arange(0,T,dt)
     th_init = init
+
     for j in range(nc1):
 
-        y0 = system1.lc['dat'][int((th_init/(2*np.pi))*system1.TN),:]
-        args0 = [a,eps,del1[j]]
+        if mode == 'c':
+            y0a = list(system1.lc['dat'][int((th_init/(2*np.pi))*system1.TN),:])
+            y0b = list(a.system2.lc['dat'][int((0/(2*np.pi))*a.system2.TN),:])
+            y0 = np.array(y0a+y0b)
+        else:
+            y0 = system1.lc['dat'][int((th_init/(2*np.pi))*system1.TN),:]
+            
+        args0 = [a,eps[j],del1[j]]
 
-        solf = _get_sol(full_rhs,y0,t,args=args0,recompute=False)
+        recompute = True
+        solf = _get_sol(full_rhs,y0,t,args=args0,recompute=recompute)
 
+        if mode == 'c':
+            
+
+            v1_peak_idxs = find_peaks(solf[:,0])[0]
+            v2_peak_idxs = find_peaks(solf[:,4])[0]
+            
+            # match total number of peaks
+            min_idx = np.amin([len(v1_peak_idxs),len(v2_peak_idxs)])
+            v1_peak_idxs = v1_peak_idxs[:min_idx]
+            v2_peak_idxs = v2_peak_idxs[:min_idx]
+            
+            fp1 = t[v1_peak_idxs]
+            fp2 = t[v2_peak_idxs]
+
+            tp1 = t[v1_peak_idxs]
+            tp2 = tp1
+            T = fp1[-1]-fp1[-2]
+            y2 = np.mod(fp2-a.om*fp1,T)/T*2*np.pi
+            print('approx per',T)
+
+            
+            #dim1 = a.system1.dim;dim2 = a.system2.dim
+            #tp1,fp1 = get_phase(t,solf[:,:dim1],skipn=100,system1=system1)
+            #tp2,fp2 = get_phase(t,solf[:,dim1:],skipn=100,system1=system2)
+            #y2 = np.mod(fp1-a.om*fp2,2*np.pi)#/T*2*np.pi
+            
+            axs[d1_idx+1,j].scatter(y2,tp2,s=5,color='gray',alpha=.5,
+                                    label='Full')
+            
+        else:
+            tp,fp = get_phase(t,solf,skipn=100,system1=system1)
+            force_phase = np.mod((a._m[1]+del1[j])*tp,2*np.pi)
+            fp2 = np.mod(fp-a.om*force_phase,2*np.pi)
+            axs[d1_idx+1,j].scatter(fp2,tp,s=5,color='gray',alpha=.5,
+                                    label='Full')
+        
         args1 = {'t_eval':t,'t_span':[0,t[-1]],'args':(*args0,),**kw_sim}
-        solr2d = solve_ivp(rhs_avg_1d,y0=[th_init,0],**args1)
-        solr1d = solve_ivp(rhs_avg_2d,y0=[th_init],**args1)
 
-        tp,fp = get_phase(t,solf,skipn=100,system1=system1)
-
-        force_phase = np.mod((a._m[1]+del1[j])*tp,2*np.pi)
-
-        fp2 = np.mod(fp-a.om*force_phase,2*np.pi)
-        axs[2,j].scatter(fp2,tp,s=5,color='gray',alpha=.5,label='Full')
-        axs[2,j].plot(np.mod(solr2d.y.T[:,0],2*np.pi),t,
-                         color='tab:blue',alpha=.75,label='2D')
-        axs[2,j].plot(np.mod(solr1d.y.T[:,0],2*np.pi),t,
-                         color='tab:red',alpha=.75,label='1D')
-
-        # solution on 2d phase plane
-        xs = np.mod(solr2d.y.T[:,0],2*np.pi)
-        ys = solr2d.y.T[:,1]
-        discont_idxs = np.abs(np.gradient(xs,1)) > np.pi/2
-
-        xs[discont_idxs] = np.nan
-        ys[discont_idxs] = np.nan
-
-        line, = axs[0,j].plot(xs,ys,color='tab:blue',alpha=.75)
-        add_arrow_to_line2D(axs[0,j],line,arrow_locs=[.25,.75])
-
-        axs[0,j].set_ylim(pmin,pmax)
+        if mode == 'f':
+            solr2d = solve_ivp(rhs_avg_2d,y0=[th_init,0],**args1)
+            axs[d1_idx+1,j].plot(np.mod(solr2d.y.T[:,0],2*np.pi),t,
+                                 color='tab:blue',alpha=.75,label='2D')
+            # solution on 2d phase plane
+            xs = np.mod(solr2d.y.T[:,0],2*np.pi)
+            ys = solr2d.y.T[:,1]
+            discont_idxs = np.abs(np.gradient(xs,1)) > np.pi/2
+            
+            xs[discont_idxs] = np.nan
+            ys[discont_idxs] = np.nan
+            
+            line, = axs[0,j].plot(xs,ys,color='tab:blue',alpha=.75)
+            add_arrow_to_line2D(axs[0,j],line,arrow_locs=[.25,.75])
+            
+            axs[0,j].set_ylim(pmin,pmax)
 
         # solution on 1d phase plane
+
+        if mode == 'c':
+            solr1d = solve_ivp(rhs_avg_1dc,y0=[th_init],**args1)
+        else:
+            solr1d = solve_ivp(rhs_avg_1d,y0=[th_init],**args1)
+        axs[d1_idx+1,j].plot(np.mod(solr1d.y.T[:,0],2*np.pi),t,
+                             color='tab:red',alpha=.75,label='1D',
+                             ls='--')
+        
         xs = np.mod(solr1d.y.T[:,0],2*np.pi)
         ys = np.zeros(len(xs))
         discont_idxs = np.abs(np.gradient(xs,1)) > np.pi/2
@@ -434,11 +562,13 @@ def draw_solutions(axs,a,T,eps,del1,pmax,pmin,init,full_rhs):
         xs[discont_idxs] = np.nan
         ys[discont_idxs] = np.nan
 
-        line, = axs[1,j].plot(xs,ys,color='tab:red',alpha=.75)
-        add_arrow_to_line2D(axs[1,j],line,arrow_locs=[.25,.75])
+        line, = axs[d1_idx,j].plot(xs,ys,color='tab:red',alpha=.75,
+                                   ls='--')
+        add_arrow_to_line2D(axs[d1_idx,j],line,arrow_locs=[.25,.75])
 
-    axs[2,0].legend()
-    axs[2,0].set_ylim(axs[2,0].get_ylim()[::-1])
+
+    #axs[d1_idx+1,0].legend()
+    #axs[d1_idx+1,0].set_ylim(axs[d1_idx+1,0].get_ylim()[::-1])
 
     return axs
 
@@ -572,6 +702,256 @@ def trajectories_thal():
     return fig
 
 
+def trajectories_thal2():
+    """
+    Plot phase plane, phase line, and phases over time
+    """
+    
+    kw_thal = copy.deepcopy(kw_thal_template)
+    kw_thal['rhs'] = t2.rhs
+    kw_thal['var_names'] = ['v','h','r','w']
+    kw_thal['init'] = np.array([-.64,0.71,0.25,0,6.28])
+    kw_thal['forcing_fn'] = None
+    kw_thal['coupling'] = t2.coupling
+    kw_thal['trunc_order'] = 3
+    #kw_thal['save_fig'] = True
+    
+    kw_thal['model_name'] = 'thal0';kw_thal['idx']=0
+    system1 = rsp(**{'pardict':pd_thal_template,**kw_thal})
+
+    kw_thal['model_name'] = 'thal1';kw_thal['idx']=1
+    system2 = rsp(**{'pardict':pd_thal_template,**kw_thal})
+
+    pl_list = [(1,1),(1,2),(1,2),(1,2)]
+    T_list = [3000,1500,2000,2000]
+    N_list = [500,500,500,500]
+    
+    e_list = [(.11,.11),(.05,.09),(.1,.1),(.1,.1)]
+    d_list = [(.0,.002),(.0,.005),(.0,.001),(0,.001)]
+    
+    init_list = [.1,.1,np.pi/2,.1]
+    
+    pmax_list = [.5,.5,.5,.5]
+    pmin_list = [-.5,-.5,-.5,-.5]
+
+    full_rhs = _full_thal2
+    fig,axs = _setup_trajectories_plot(mode='c')
+
+    for k in range(len(axs)):
+        # run simulations and plot
+
+        recompute_list = ['p_data_thal0','p_data_thal1']
+        recompute_list += ['h_data_thal0','h_data_thal1']
+
+        if k == 1:
+            recompute_list = recompute_list
+        else:
+            recompute_list = []
+
+        a = nmc(system1,system2,
+                #recompute_list=recompute_list,
+                _n=('om0',pl_list[k][0]),
+                _m=('om1',pl_list[k][1]),
+                save_fig=True,
+                NP=N_list[k],NH=N_list[k])
+        
+        """        
+        as1 = a.system1.p['dat'];as2 = a.system2.p['dat']
+        m1 = np.amin(as1[0]-as2[0].T);x1 = np.amax(as1[0]-as2[0].T)
+        m2 = np.amin(as1[1]-as2[1].T);x2 = np.amax(as1[1]-as2[1].T)
+        m3 = np.amin(as1[3]-as2[3].T);x3 = np.amax(as1[3]-as2[3].T)
+
+        vmin = np.amin([m1,m2]);vmax = np.amax([x1,x2])
+        
+        fig2,axs2 = plt.subplots(1,3)
+        as1 = a.system1.h['dat'];as2 = a.system2.h['dat']
+        axs2[0].plot(as1[0]-as2[0][::-1])
+        axs2[1].plot(as1[1]-as2[1][::-1])
+        axs2[2].plot(as1[2]-as2[2][::-1])
+        #axs2[2].plot(as1[3]);axs2[2].plot(as2[3][::-1])
+        plt.savefig('figs_temp/h_diffs_'+str(k)+'.png')
+        plt.close()
+        """
+        
+        draw_solutions(axs[k],a,T_list[k],e_list[k],d_list[k],
+                       pmax_list[k],pmin_list[k],init_list[k],
+                       full_rhs)
+
+        del a
+            
+    # set title
+    ct = 0
+    for k in range(len(axs)):
+        axs[k][0,0].set_title(labels[ct],loc='left')
+        ct += 1
+                              
+        axs[k][0,1].set_title(labels[ct],loc='left')
+        ct += 1
+
+    # fix title with parameter values
+    nr1,nc1 = axs[0].shape
+    for k in range(len(axs)):
+        for j in range(nc1):
+            ti1 = axs[k][0,j].get_title()
+            ti1 += str(pl_list[k][0])+':'+str(pl_list[k][1])
+            #t1 += r', $\varepsilon='+str(e_list[k])+'$'
+            ti1 += r', $\delta = '+str(d_list[k][j])+'$'
+            
+            axs[k][0,j].set_title(ti1)
+
+    return fig
+
+
+def trajectories_thal2b():
+    """
+    Plot phase plane, phase line, and phases over time
+    """
+    
+    kw_thal = copy.deepcopy(kw_thal_template)
+    kw_thal['rhs'] = t2.rhs
+    kw_thal['var_names'] = ['v','h','r','w']
+    kw_thal['init'] = np.array([-.64,0.71,0.25,0,6.28])
+    kw_thal['forcing_fn'] = None
+    kw_thal['coupling'] = t2.coupling
+    kw_thal['trunc_order'] = 3
+    #kw_thal['save_fig'] = True
+
+    pd_thal = copy.deepcopy(pd_thal_template)
+    pd_thal['ib'] = 8.5
+    
+    kw_thal['model_name'] = 'thal0b';kw_thal['idx']=0
+    system1 = rsp(**{'pardict':pd_thal,**kw_thal})
+
+    kw_thal['model_name'] = 'thal1b';kw_thal['idx']=1
+    system2 = rsp(**{'pardict':pd_thal,**kw_thal})
+
+    pl_list = [(1,1),(2,1),(1,2),(2,3)]
+    T_list = [1000,250,500,500]
+    e_list = [.15,.15,.1,.1]
+    d_list = [(.0,.01),(.01,.05),(.0,.03),(.0,.01)]
+    pmax_list = [.5,.5,.5,.5]
+    pmin_list = [-.5,-.5,-.5,-.5]
+    init_list = [5,3,5,5]
+
+    full_rhs = _full_thal2
+    fig,axs = _setup_trajectories_plot(mode='c')
+
+    for k in range(len(axs[:1])):
+        # run simulations and plot
+        a = nmc(system1,system2,
+                #recompute_list=['h_dat_thal0','h_dat_thal1'],
+                _n=('om0',pl_list[k][0]),
+                _m=('om1',pl_list[k][1]),
+                save_fig=True,
+                NP=500,NH=500)
+
+        #a.Tmax = T_list[k]
+        #a.eps_val = e_list[k]
+        #a.del1_val = d_list[k]
+        #a.pmin = pmin_list[k]
+        #a.pmax = pmax_list[k]
+        
+        draw_solutions(axs[k],a,T_list[k],e_list[k],d_list[k],
+                       pmax_list[k],pmin_list[k],init_list[k],
+                       full_rhs)
+
+        del a
+            
+    # set title
+    ct = 0
+    for k in range(len(axs)):
+        axs[k][0,0].set_title(labels[ct],loc='left')
+        ct += 1
+                              
+        axs[k][0,1].set_title(labels[ct],loc='left')
+        ct += 1
+
+    # fix title with parameter values
+    nr1,nc1 = axs[0].shape
+    for k in range(len(axs)):
+        for j in range(nc1):
+            ti1 = axs[k][0,j].get_title()
+            ti1 += str(pl_list[k][0])+':'+str(pl_list[k][1])
+            #t1 += r', $\varepsilon='+str(e_list[k])+'$'
+            ti1 += r', $\delta = '+str(d_list[k][j])+'$'
+            
+            axs[k][0,j].set_title(ti1)
+
+    return fig
+
+
+def trajectories_gt2():
+    """
+    Plot phase plane, phase line, and phases over time
+    """
+    
+    kw_thal = copy.deepcopy(kw_thal_template)
+    kw_thal['rhs'] = t2.rhs
+    kw_thal['var_names'] = ['v','h','r','w']
+    kw_thal['init'] = np.array([-.64,0.71,0.25,0,6.28])
+    kw_thal['forcing_fn'] = None
+    kw_thal['coupling'] = gt.coupling_tm
+    #kw_thal['save_fig'] = True
+    kw_thal['trunc_order'] = 3
+    
+    kw_thal['model_name'] = 'gt0';kw_thal['idx']=0
+    system1 = rsp(**{'pardict':pd_thal_template,**kw_thal})
+
+    kw_gw = copy.deepcopy(kw_gw_template)
+    kw_gw['model_name'] = 'gt1';kw_gw['idx']=1
+    kw_gw['trunc_order'] = 3
+    
+    system2 = rsp(**{'pardict':pd_gw_template,**kw_gw})
+
+    pl_list = [(1,1),(2,1),(1,2),(2,3)]
+    T_list = [500,250,500,500]
+    e_list = [.048,.1,.1,.1]
+    d_list = [(-.055,.03),(.01,.05),(.0,.03),(.0,.01)]
+    pmax_list = [.5,.5,.5,.5]
+    pmin_list = [-.5,-.5,-.5,-.5]
+    init_list = [np.pi,0,5,5]
+
+    full_rhs = _full_gt2
+    fig,axs = _setup_trajectories_plot(mode='c')
+
+    for k in range(len(axs[:1])):
+        # run simulations and plot
+        a = nmc(system1,system2,
+                recompute_list=[],
+                _n=('om0',pl_list[k][0]),
+                _m=('om1',pl_list[k][1]),
+                NP=300,NH=300)
+
+        draw_solutions(axs[k],a,T_list[k],e_list[k],d_list[k],
+                       pmax_list[k],pmin_list[k],init_list[k],
+                       full_rhs)
+
+        del a
+            
+    # set title
+    ct = 0
+    for k in range(len(axs)):
+        axs[k][0,0].set_title(labels[ct],loc='left')
+        ct += 1
+                              
+        axs[k][0,1].set_title(labels[ct],loc='left')
+        ct += 1
+
+    # fix title with parameter values
+    nr1,nc1 = axs[0].shape
+    for k in range(len(axs)):
+        for j in range(nc1):
+            pass
+            #ti1 = axs[k][0,j].get_title()
+            #ti1 += str(pl_list[k][0])+':'+str(pl_list[k][1])
+            #t1 += r', $\varepsilon='+str(e_list[k])+'$'
+            #ti1 += r', $\delta = '+str(d_list[k][j])+'$'
+            
+            #axs[k][0,j].set_title(ti1)
+
+    return fig
+
+
 def _get_fr(rhs,a,eps,del1,th_init=0,dt=.02,T=1000,
             data_dir='fr',recompute=False):
     """
@@ -668,7 +1048,8 @@ def fr_cgl(recompute=False):
     
         axs[k].plot(del_range,fr_full,color='k',label='Full')
         axs[k].plot(del_range,fr_redu2d,color='tab:blue',label='2D',alpha=.75)
-        axs[k].plot(del_range,fr_redu1d,color='tab:red',label='1D',alpha=.75)
+        axs[k].plot(del_range,fr_redu1d,color='tab:red',label='1D',alpha=.75,
+                    ls='--')
 
         axs[k].legend()
 
@@ -729,7 +1110,7 @@ def load_tongue(system1,pl_list,exponents,mode='1d',
 def tongues_cgl():
     kw_cgl = copy.deepcopy(kw_cgl_template)
     kw_cgl['rhs'] = c1.rhs
-    
+     
     system1 = rsp(**{'pardict':pd_cgl_template,**kw_cgl})
     pl_list = [(1,1),(2,1),(3,1),(4,1)]
     
@@ -748,7 +1129,7 @@ def tongues_cgl():
         x2d = pl_list[k][0]/(pl_list[k][1]+d2d)
         x1d = pl_list[k][0]/(pl_list[k][1]+d1d)
         axs.plot(x2d,v2d,color='tab:blue',alpha=.75)
-        axs.plot(x1d,v1d,color='tab:red',alpha=.75)
+        axs.plot(x1d,v1d,color='tab:red',alpha=.75,ls='--')
 
     # inset for 4:1
     axins = axs.inset_axes([.7,.2,.2,.7],
@@ -859,7 +1240,7 @@ def tongues_thal():
         x2d = pl_list[k][0]/(pl_list[k][1]+d2d)
         x1d = pl_list[k][0]/(pl_list[k][1]+d1d)
         axs.plot(x2d,v2d,color='tab:blue',alpha=.75)
-        axs.plot(x1d,v1d,color='tab:red',alpha=.75)
+        axs.plot(x1d,v1d,color='tab:red',alpha=.75,ls='--')
 
     axs.set_xlabel(r'$\omega_X/(\omega_Y+\delta)$')
     axs.set_ylabel(r'$\varepsilon$')
@@ -878,9 +1259,182 @@ def tongues_thal():
     axs.set_xscale('log')
 
     axs.set_xticks(ticklist2)
-    axs.set_xticklabels(labellist2)
-    
+    axs.set_xticklabels(labellist2) 
+   
     plt.tight_layout()
+
+    return fig
+
+
+x_temp = np.linspace(-np.pi,3*np.pi,2000)
+def bif1d(a,eps,del1):
+    """
+    for coupling only
+    """
+
+    y = rhs_avg_1dc(0,x_temp,a,eps,del1)
+            
+    # get all zeros
+    z1 = x_temp[1:][(y[1:]>0)*(y[:-1]<=0)]
+    z2 = x_temp[1:][(y[1:]<0)*(y[:-1]>=0)]
+
+    return z1,z2
+
+def bif1d_thal2():
+
+    kw_thal = copy.deepcopy(kw_thal_template)
+    kw_thal['rhs'] = t2.rhs
+    kw_thal['var_names'] = ['v','h','r','w']
+    kw_thal['init'] = np.array([-.64,0.71,0.25,0,6.28])
+    kw_thal['forcing_fn'] = None
+    kw_thal['coupling'] = t2.coupling
+    kw_thal['trunc_order'] = 3
+    #kw_thal['save_fig'] = True
+    
+    kw_thal['model_name'] = 'thal0';kw_thal['idx']=0
+    system1 = rsp(**{'pardict':pd_thal_template,**kw_thal})
+
+    kw_thal['model_name'] = 'thal1';kw_thal['idx']=1
+    system2 = rsp(**{'pardict':pd_thal_template,**kw_thal})
+    
+    fig,axs=plt.subplots(3,1,figsize=(8,15))
+
+    del_list = np.linspace(-.005,.005,3)
+    print(del_list)
+    eps_list = np.linspace(0,.15,200)
+
+    l1 = ['p_data_thal0','p_data_thal1']
+    l2 = ['h_data_thal0','h_data_thal1']
+    
+    for k in range(len(del_list)):
+        n = 1;m = 2
+        if k == 0:
+            rc = l1+l2
+        else:
+            rc = []
+        
+        a = nmc(system1,system2,
+                recompute_list=rc,
+                _n=('om0',n),_m=('om1',m),
+                NP=500,NH=500)
+
+        zu_list = []
+        zs_list = []
+
+        zu = []
+        zs = []
+
+        for eps in eps_list:
+            z1,z2 = bif1d(a,eps,del_list[k])
+
+            zu.append(z1)
+            zs.append(z2)
+
+        for xe, ye in zip(eps_list, zu):
+            axs[k].scatter([xe] * len(ye), ye,s=2,c='red')
+
+        for xe, ye in zip(eps_list, zs):
+            axs[k].scatter([xe] * len(ye), ye,s=2,c='k')
+
+        """
+        for xe, ye in zip(eps_list, zu1):
+            axs.scatter([xe] * len(ye), ye,s=2,c='tab:orange')
+
+        for xe, ye in zip(eps_list, zs1):
+            axs.scatter([xe] * len(ye), ye,s=2,c='gray')
+        """
+
+        axs[k].set_ylim(-.1,2*np.pi+.1)
+
+    """
+    eps_list = np.linspace(0,.2)
+
+    zu = []
+    zs = []
+    
+    for eps in eps_list:
+        z1,z2 = bif1d(a,eps,.1)
+        
+        zu.append(z1)
+        zs.append(z2)
+
+    for xe, ye in zip(eps_list, zu):
+        axs.scatter([xe] * len(ye), ye,s=2,c='red')
+
+    for xe, ye in zip(eps_list, zs):
+        axs.scatter([xe] * len(ye), ye,s=2,c='k')
+
+    
+    
+    """
+    #for xe, ye in zip(eps_list, zu1):
+    #    axs.scatter([xe] * len(ye), ye,s=2,c='tab:orange')
+
+    #for xe, ye in zip(eps_list, zs1):
+    #    axs.scatter([xe] * len(ye), ye,s=2,c='gray')
+
+
+
+    return fig
+
+def bif1d_gt2():
+    kw_thal = copy.deepcopy(kw_thal_template)
+    kw_thal['rhs'] = t2.rhs
+    kw_thal['var_names'] = ['v','h','r','w']
+    kw_thal['init'] = np.array([-.64,0.71,0.25,0,6.28])
+    kw_thal['forcing_fn'] = None
+    kw_thal['coupling'] = gt.coupling_tm
+    #kw_thal['save_fig'] = True
+    kw_thal['trunc_order'] = 2
+    
+    kw_thal['model_name'] = 'gt0';kw_thal['idx']=0
+    system1 = rsp(**{'pardict':pd_thal_template,**kw_thal})
+
+    kw_gw = copy.deepcopy(kw_gw_template)
+    kw_gw['model_name'] = 'gt1';kw_gw['idx']=1
+    kw_gw['trunc_order'] = 3
+    
+    system2 = rsp(**{'pardict':pd_gw_template,**kw_gw})
+    
+    fig,axs=plt.subplots(10,1,figsize=(8,15))
+
+    del_list = np.linspace(-.08,-.02,10)
+    eps_list = np.linspace(0,.1,100)
+    
+    for k in range(len(del_list)):
+        n = 1;m = 1
+        a = nmc(system1,system2,
+                recompute_list=[],
+                _n=('om0',n),_m=('om1',m),
+                NP=300,NH=300)
+
+        zu_list = []
+        zs_list = []
+
+        zu = []
+        zs = []
+
+        for eps in eps_list:
+            z1,z2 = bif1d(a,eps,del_list[k])
+
+            zu.append(z1)
+            zs.append(z2)
+
+        for xe, ye in zip(eps_list, zu):
+            axs[k].scatter([xe] * len(ye), ye,s=2,c='red')
+
+        for xe, ye in zip(eps_list, zs):
+            axs[k].scatter([xe] * len(ye), ye,s=2,c='k')
+
+        """
+        for xe, ye in zip(eps_list, zu1):
+            axs.scatter([xe] * len(ye), ye,s=2,c='tab:orange')
+
+        for xe, ye in zip(eps_list, zs1):
+            axs.scatter([xe] * len(ye), ye,s=2,c='gray')
+        """
+
+        axs[k].set_ylim(-.1,2*np.pi+.1)
 
     return fig
 
@@ -917,18 +1471,31 @@ def main():
         #(trajectories_thal,[],['figs/f_traj_thal.pdf',
         #                       'figs/f_traj_thal.png'],200),
 
+        (trajectories_thal2,[],['figs/f_traj_thal2.pdf',
+                               'figs/f_traj_thal2.png'],200),
+
+        #(trajectories_thal2b,[],['figs/f_traj_thal2b.pdf',
+        #                        'figs/f_traj_thal2b.png'],200),
+
+        #(trajectories_gt2,[],['figs/f_traj_gt2.pdf',
+        #                       'figs/f_traj_gt2.png'],200),
+                              
         #(fr_cgl,[],['figs/f_fr_cgl.pdf',
         #            'figs/f_fr_cgl.png'],200),
 
         #(fr_thal,[],['figs/f_fr_thal.pdf',
         #             'figs/f_fr_thal.png'],200),
         
-        (tongues_cgl,[],['figs/f_tongues_cgl.pdf',
-                         'figs/f_tongues_cgl.png'],200),
+        #(tongues_cgl,[],['figs/f_tongues_cgl.pdf',
+        #                 'figs/f_tongues_cgl.png'],200),
 
         
-        (tongues_thal,[],['figs/f_tongues_thal.pdf',
-                          'figs/f_tongues_thal.png'],200),
+        #(tongues_thal,[],['figs/f_tongues_thal.pdf',
+        #                  'figs/f_tongues_thal.png'],200),
+
+
+        (bif1d_thal2,[],['figs/f_bif1d_thal2.png']),
+        #(bif1d_gt2,[],['figs/f_bif1d_gt2.png']),
 
     ]
     

@@ -219,7 +219,7 @@ def run_newton2(obj,fn,init,k,het_lams,max_iter=10,
                                        exception=exception,dense=dense)
             
             if np.linalg.norm(dx_prev) < np.linalg.norm(dx):
-                alpha /= 1
+                alpha /= 1.1
                 
             if np.linalg.norm(dx) < np.linalg.norm(dx_smallest):
                 dx_smallest = dx

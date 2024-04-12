@@ -40,6 +40,22 @@ def rhs_avg_1d(t,th,a,eps=0,del1=0,miter=None):
     return dth*a._n[1]
 
 
+def rhs_avg_1dc(t,y,a,eps=0,del1=0,miter=None):
+    """ for coupling only. 1d"""
+    system1 = a.system1; system2 = a.system2
+    
+    if miter is None:
+        nn = a.system1.miter
+    else:
+        nn = miter
+    
+    h = 0
+    for i in range(nn):
+        het = 4*del1*np.mean(system1.z['dat'][i])/a._n[1]
+        h += eps**(i+1)*(het + system1.h['lam'][i](y) - system2.h['lam'][i](y))
+    return h*a._n[1]
+
+
 def _redu(t,y,a,eps=.01,del1=0):
     th,ps,tf = y
     

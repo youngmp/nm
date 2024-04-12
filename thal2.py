@@ -75,7 +75,7 @@ def rhs(t,z,pdict,option='val',idx=''):
     iL = pdict['gL'+idx]*(v-pdict['eL'+idx])  #
     ina = pdict['gna'+idx]*(minf**3)*h*(v-pdict['ena'+idx])  #
     ik = pdict['gk'+idx]*((0.75*(1-h))**4)*(v-pdict['ek'+idx])  #
-    it = pdict['gt'+idx]*(pinf**2)*r*(v-pdict['et'+idx])  #    
+    it = pdict['gt'+idx]*(pinf**2)*r*(v-pdict['et'+idx])  #
     
     dv = (-iL-ina-ik-it+pdict['ib'+idx])/pdict['c'+idx]
     dh = (hinf-h)/tauh
@@ -125,8 +125,8 @@ def coupling(vars_pair,pdict,option='val',idx=''):
     om_fix = pdict['om_fix'+idx]
     
     if option in ['val','value']:
-        return -om_fix*omt*np.array([w2*(v-pdict['esyn'+idx]),
-                                     0,0,0])/pdict['c'+idx]
+        return -om_fix*omt*np.array([w2*(v*100-pdict['esyn'+idx]),
+                                     0,0,0])/pdict['c'+idx]/100
     elif option in ['sym','symbolic']:
-        return -om_fix*omt*Matrix([w2*(v-pdict['esyn'+idx]),
-                                   0,0,0])/pdict['c'+idx]
+        return -om_fix*omt*Matrix([w2*(v*100-pdict['esyn'+idx]),
+                                   0,0,0])/pdict['c'+idx]/100
