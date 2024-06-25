@@ -34,7 +34,6 @@ import argparse
 import copy
 
 
-
 def coupling(vars_pair,pdict,option='val',idx=''):
     x1,y1,x2,y2 = vars_pair
     idx = str(idx)

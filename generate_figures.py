@@ -22,6 +22,7 @@ import gt
 from lib.util import *
 from lib.rhs import *
 from lib.functions import *
+from lib.plot_util import *
 
 nmc = nm.nmCoupling;rsp = rp.Response
 
@@ -45,8 +46,11 @@ from scipy.integrate import solve_ivp
 #from matplotlib.legend_handler import HandlerBase
 from scipy.optimize import brentq, root, bisect
 
+
+
 import matplotlib.patheffects as pe
 import copy
+from copy import deepcopy
 
 matplotlib.rcParams['font.family'] = 'serif'
 matplotlib.rcParams['text.usetex'] = True
@@ -71,7 +75,7 @@ kw_cgl_template = {'var_names':['x','y'],
                    'TN':2000,
                    'idx':0,
                    'model_name':'cglf0',
-                   'trunc_order':6,
+                   'trunc_order':3,
                    'recompute_list':[],
                    'g_forward':False,
                    'z_forward':False,
@@ -266,15 +270,6 @@ def load_tongue(n,m,pd1,pd2,kws1,kws2,model_name='cglf0',dir1='',
     return data
 
 
-def jac(y,system1,a,eps,del1,h=.01):
-
-    dx = np.array([h,0])
-    dy = np.array([0,h])
-    
-    c1 = (rhs_avg(0,y+dx,system1,a,eps,del1)-rhs_avg(0,y,system1,a,eps,del1))/h
-    c2 = (rhs_avg(0,y+dy,system1,a,eps,del1)-rhs_avg(0,y,system1,a,eps,del1))/h
-
-    return np.array([c1,c2])
 
 
 def _get_sol(rhs,y0,t,args,recompute=False,
@@ -307,14 +302,13 @@ def _get_sol(rhs,y0,t,args,recompute=False,
 
     return y
 
-
 def _full_cgl1(t,y,a,eps=0,del1=0):
     pd1 = a.system1.pardict
     omx = a._n[1];omf = a._m[1]
     ofix = pd1['om_fix0']
     u = a.system1.forcing_fn(t*(del1+omf))
     
-    out1 = c1.rhs(t,y,pd1,'val',0) + eps*ofix*omx*np.array([u,0])
+    out1 = c1.rhs_old2(t,y,pd1,'val',0) + eps*ofix*omx*np.array([u,0])
     return np.array(list(out1))
 
 def _full_thal1(t,y,a,eps=0,del1=0):
@@ -351,7 +345,9 @@ def _full_gt2(t,y,a,eps=0,del1=0):
 labeltempf = [r'$\psi$',r'$\mathcal{H}$',r'$t$']
 labeltempc = [r'$\mathcal{H}$',r'$t$']
 
-def _setup_trajectories_plot(mode='f'):
+def _setup_trajectories_plot(mode='f',labels=True,
+                             wspace=0.1,hspace=0.05,
+                             padw=0.04,padh=0.05):
     """
     plot arranged as 0 top left, 1 top right, 2 bottom left, 3 bottom right
     each object in axs is a 2x3 set of axis objects.
@@ -360,7 +356,7 @@ def _setup_trajectories_plot(mode='f'):
     """
 
     if mode == 'f':
-        w = 8;h = 8
+        w = 8;h = 6
         nr1 = 3;nc1 = 2
     elif mode == 'c':
         w = 8;h = 6
@@ -368,10 +364,9 @@ def _setup_trajectories_plot(mode='f'):
     
     fig = plt.figure(figsize=(w,h))
 
-    kws = {'wspace':0.075,'hspace':0.075,'nrows':nr1,'ncols':nc1}
-    padw = .04;padh = .05
-    lo = 0.075
-    hi = 0.96
+    kws = {'wspace':wspace,'hspace':hspace,'nrows':nr1,'ncols':nc1}
+    padw = padw;padh = padh
+    lo = 0.075;hi = 0.96
 
     gs1 = fig.add_gridspec(left=lo, right=0.5-padw,bottom=0.5+padh,top=hi,**kws)
     axs1 = [[fig.add_subplot(gs1[i,j]) for j in range(nc1)] for i in range(nr1)]
@@ -396,7 +391,6 @@ def _setup_trajectories_plot(mode='f'):
         axs[k][0,0].tick_params(**{**kwall,**kwb})
         axs[k][0,1].tick_params(**{**kwall,**kwl,**kwb})        
         
-
         if mode == 'f':
             axs[k][2,1].tick_params(**{**kwall,**kwl})
             axs[k][1,0].tick_params(**{**kwall,**kwb})
@@ -406,59 +400,122 @@ def _setup_trajectories_plot(mode='f'):
             axs[k][1,1].tick_params(**{**kwall,**kwl})
             
         for i in range(nr1):
-            
-            axs[k][i,0].sharey(axs[k][i,1])
+            if labels:
 
-            if mode == 'c':
-                axs[k][i,0].set_ylabel(labeltempc[i],labelpad=0)
-            else:
-                axs[k][i,0].set_ylabel(labeltempf[i],labelpad=0)
-            for j in range(nc1):
-                axs[k][i,j].margins(x=0)
-                axs[k][i,j].set_xlim(0,2*np.pi)
+                axs[k][i,0].sharey(axs[k][i,1])
+
+                if mode == 'c':
+                    axs[k][i,0].set_ylabel(labeltempc[i],labelpad=0)
+                else:
+                    axs[k][i,0].set_ylabel(labeltempf[i],labelpad=0)
+                for j in range(nc1):
+                    axs[k][i,j].margins(x=0)
+                    axs[k][i,j].set_xlim(0,2*np.pi)
 
         for j in range(nc1):
-            
-            axs[k][-1,j].margins(y=0)
-            axs[k][-1,j].set_xlabel(r'$\phi$',labelpad=0)
 
-            axs[k][-1,j].set_xticks(np.arange(0,3,1)*np.pi)
-            axs[k][-1,j].set_xticklabels(pi_label_short)
+            if labels:
+                axs[k][-1,j].margins(y=0)
+                axs[k][-1,j].set_xlabel(r'$\phi$',labelpad=0)
+                
+                axs[k][-1,j].set_xticks(np.arange(0,3,1)*np.pi)
+                axs[k][-1,j].set_xticklabels(pi_label_short)
             
     return fig,axs
 
 
+def draw_forcing_sols(axs,a,T,eps,del1,pmax,pmin,init,full_rhs,
+                      recompute:bool=False):
+    
+    nr1,nc1 = axs.shape
+    system1 = a.system1
+    kw1 = {'a':a,'return_data':True,'pmin':pmin,'pmax':pmax}
+
+    # draw nullclines
+    for j in range(nc1):
+        co1,co2 = pl_exist_2d(del1=del1[j],eps=eps[j],**kw1)
+        path1 = co1.get_paths()[0]
+        patch1 = matplotlib.patches.PathPatch(path1,facecolor='none',lw=1)
+        axs[0,j].add_patch(patch1)
+
+        path2 = co2.get_paths()[0]
+        patch2 = matplotlib.patches.PathPatch(path2,facecolor='none',lw=1,
+                                              edgecolor='gray',ls=':')
+        axs[0,j].add_patch(patch2)
+
+    # draw 1d phase lines
+    for j in range(nc1):
+        x = np.linspace(0,2*np.pi,200)
+        y = rhs_avg_1d(0,x,a,eps[j],del1[j])
+        
+        axs[1,j].plot(x,y,color='k',lw=1)
+        axs[1,j].axhline(0,x[0],x[-1],color='gray',lw=1,ls=':')
+
+    # trajectory
+    dt = .02;
+    t = np.arange(0,T,dt)
+    th_init = init
+
+    for j in range(nc1):
+        y0 = system1.lc['dat'][int((th_init/(2*np.pi))*system1.TN),:]
+        args0 = [a,eps[j],del1[j]]
+        
+        solf = _get_sol(full_rhs,y0,t,args=args0,recompute=recompute)
+        
+        tp,fp = get_phase(t,solf,skipn=100,system1=system1)
+        force_phase = np.mod((a._m[1]+del1[j])*tp,2*np.pi)
+        fp2 = np.mod(fp-a.om*force_phase,2*np.pi)
+        axs[2,j].scatter(fp2,tp,s=5,color='gray',alpha=.5,
+                                label='Full')
+        
+        args1 = {'t_eval':t,'t_span':[0,t[-1]],'args':(*args0,),**kw_sim}
+
+        solr2d = solve_ivp(rhs_avg_2d,y0=[th_init,0],**args1)
+        axs[2,j].plot(np.mod(solr2d.y.T[:,0],2*np.pi),t,
+                                 color='tab:blue',alpha=.75,label='2D')
+        # solution on 2d phase plane
+        xs = np.mod(solr2d.y.T[:,0],2*np.pi)
+        ys = solr2d.y.T[:,1]
+        discont_idxs = np.abs(np.gradient(xs,1)) > np.pi/2
+        
+        xs[discont_idxs] = np.nan
+        ys[discont_idxs] = np.nan
+            
+        line, = axs[0,j].plot(xs,ys,color='tab:blue',alpha=.75)
+        add_arrow_to_line2D(axs[0,j],line,arrow_locs=[.25,.75])
+            
+        axs[0,j].set_ylim(pmin,pmax)
+
+        axs[2,j].set_ylim(T,0)
+
+        # solution on 1d phase plane
+        solr1d = solve_ivp(rhs_avg_1d,y0=[th_init],**args1)
+        axs[1+1,j].plot(np.mod(solr1d.y.T[:,0],2*np.pi),t,
+                        color='tab:red',alpha=.75,label='1D',
+                        ls='--')
+        
+        xs = np.mod(solr1d.y.T[:,0],2*np.pi)
+        ys = np.zeros(len(xs))
+        discont_idxs = np.abs(np.gradient(xs,1)) > np.pi/2
+
+        xs[discont_idxs] = np.nan
+        ys[discont_idxs] = np.nan
+
+        line, = axs[1,j].plot(xs,ys,color='tab:red',alpha=.75,
+                              ls='--')
+        add_arrow_to_line2D(axs[1,j],line,arrow_locs=[.25,.75])
+
+    return axs
+
 def draw_solutions(axs,a,T,eps,del1,pmax,pmin,init,full_rhs):
 
-    if '2' in full_rhs.__name__:
-        mode = 'c'
-    elif '1' in full_rhs.__name__:
-        mode = 'f'
-    else:
-        raise ValueError('RHS must include 1 (forcing) or 2 (couplng)')
+    mode = 'c'
 
     nr1,nc1 = axs.shape
     system1 = a.system1
-
-    if mode == 'c':
-        system2 = a.system2
+    system2 = a.system2
 
     kw1 = {'eps':eps,'a':a,'return_data':True,'pmin':pmin,'pmax':pmax}
-
-    if mode == 'f':
-        d1_idx = 1
-        # 2d
-        for j in range(nc1):
-            co1,co2 = pl_exist(del1=del1[j],**kw1)
-            x_list,y_list = get_contour_data(co1)
-            for i in range(len(x_list)):
-                axs[0,j].plot(x_list[i],y_list[i],'k',lw=1)
-
-            x_list,y_list = get_contour_data(co2)
-            for i in range(len(x_list)):
-                axs[0,j].plot(x_list[i],y_list[i],'gray',lw=1,ls='--')
-    else:
-        d1_idx = 0
 
     # 1d
     for j in range(nc1):
@@ -468,8 +525,8 @@ def draw_solutions(axs,a,T,eps,del1,pmax,pmin,init,full_rhs):
             y = rhs_avg_1d(0,x,a,eps[j],del1[j])
         else:
             y = rhs_avg_1dc(0,x,a,eps[j],del1[j])
-        axs[d1_idx,j].plot(x,y,color='k',lw=1)
-        axs[d1_idx,j].axhline(0,x[0],x[-1],color='gray',lw=1,ls='--')
+        axs[0,j].plot(x,y,color='k',lw=1)
+        axs[0,j].axhline(0,x[0],x[-1],color='gray',lw=1,ls='--')
 
     # trajectory
     dt = .02;
@@ -477,21 +534,16 @@ def draw_solutions(axs,a,T,eps,del1,pmax,pmin,init,full_rhs):
     th_init = init
 
     for j in range(nc1):
-
-        if mode == 'c':
-            y0a = list(system1.lc['dat'][int((th_init/(2*np.pi))*system1.TN),:])
-            y0b = list(a.system2.lc['dat'][int((0/(2*np.pi))*a.system2.TN),:])
-            y0 = np.array(y0a+y0b)
-        else:
-            y0 = system1.lc['dat'][int((th_init/(2*np.pi))*system1.TN),:]
-            
+        y0a = list(system1.lc['dat'][int((th_init/(2*np.pi))*system1.TN),:])
+        y0b = list(a.system2.lc['dat'][int((0/(2*np.pi))*a.system2.TN),:])
+        y0 = np.array(y0a+y0b)
+                    
         args0 = [a,eps[j],del1[j]]
 
         recompute = True
         solf = _get_sol(full_rhs,y0,t,args=args0,recompute=recompute)
 
         if mode == 'c':
-            
 
             v1_peak_idxs = find_peaks(solf[:,0])[0]
             v2_peak_idxs = find_peaks(solf[:,4])[0]
@@ -528,29 +580,8 @@ def draw_solutions(axs,a,T,eps,del1,pmax,pmin,init,full_rhs):
         
         args1 = {'t_eval':t,'t_span':[0,t[-1]],'args':(*args0,),**kw_sim}
 
-        if mode == 'f':
-            solr2d = solve_ivp(rhs_avg_2d,y0=[th_init,0],**args1)
-            axs[d1_idx+1,j].plot(np.mod(solr2d.y.T[:,0],2*np.pi),t,
-                                 color='tab:blue',alpha=.75,label='2D')
-            # solution on 2d phase plane
-            xs = np.mod(solr2d.y.T[:,0],2*np.pi)
-            ys = solr2d.y.T[:,1]
-            discont_idxs = np.abs(np.gradient(xs,1)) > np.pi/2
-            
-            xs[discont_idxs] = np.nan
-            ys[discont_idxs] = np.nan
-            
-            line, = axs[0,j].plot(xs,ys,color='tab:blue',alpha=.75)
-            add_arrow_to_line2D(axs[0,j],line,arrow_locs=[.25,.75])
-            
-            axs[0,j].set_ylim(pmin,pmax)
-
         # solution on 1d phase plane
-
-        if mode == 'c':
-            solr1d = solve_ivp(rhs_avg_1dc,y0=[th_init],**args1)
-        else:
-            solr1d = solve_ivp(rhs_avg_1d,y0=[th_init],**args1)
+        solr1d = solve_ivp(rhs_avg_1dc,y0=[th_init],**args1)
         axs[d1_idx+1,j].plot(np.mod(solr1d.y.T[:,0],2*np.pi),t,
                              color='tab:red',alpha=.75,label='1D',
                              ls='--')
@@ -578,13 +609,13 @@ def trajectories_cgl():
     """
     
     kw_cgl = copy.deepcopy(kw_cgl_template)
-    kw_cgl['rhs'] = c1.rhs
+    kw_cgl['rhs'] = c1.rhs_old2
     
     system1 = rsp(**{'pardict':pd_cgl_template,**kw_cgl})
 
     pl_list = [(1,1),(2,1),(3,1),(4,1)]
     T_list = [250,500,700,1500]
-    e_list = [.2,.1,.1,.1]
+    e_list = [(.2,.2),(.1,.1),(.1,.1),(.1,.1)]
     d_list = [(.01,.08),(.01,.025),(.001,.008),(.0007,.003)]
     pmax_list = [1.5,1.5,1.5,1.5]
     pmin_list = [-1,-1,-1,-1]
@@ -601,16 +632,10 @@ def trajectories_cgl():
                 _n=('om0',pl_list[k][0]),
                 _m=('om1',pl_list[k][1]),
                 NP=300,NH=300)
-
-        #a.Tmax = T_list[k]
-        #a.eps_val = e_list[k]
-        #a.del1_val = d_list[k]
-        #a.pmin = pmin_list[k]
-        #a.pmax = pmax_list[k]
         
-        draw_solutions(axs[k],a,T_list[k],e_list[k],d_list[k],
-                       pmax_list[k],pmin_list[k],init_list[k],
-                       full_rhs)
+        draw_forcing_sols(axs[k],a,T_list[k],e_list[k],d_list[k],
+                          pmax_list[k],pmin_list[k],init_list[k],
+                          full_rhs)
 
         del a
             
@@ -633,7 +658,9 @@ def trajectories_cgl():
             ti1 += r', $\delta = '+str(d_list[k][j])+'$'
             
             axs[k][0,j].set_title(ti1)
-        
+
+    axs[2][1,0].yaxis.labelpad=-10
+    
     
     return fig
 
@@ -1011,7 +1038,7 @@ def _get_fr(rhs,a,eps,del1,th_init=0,dt=.02,T=1000,
 
 def fr_cgl(recompute=False):
     kw_cgl = copy.deepcopy(kw_cgl_template)
-    kw_cgl['rhs'] = c1.rhs
+    kw_cgl['rhs'] = c1.rhs_old2
     system1 = rsp(**{'pardict':pd_cgl_template,**kw_cgl})
 
     pl_list = [(1,1),(2,1),(3,1),(4,1)]
@@ -1059,6 +1086,10 @@ def fr_cgl(recompute=False):
         tt = axs[k].get_title()
         tt += '{}:{}'.format(a._n[1],a._m[1])
         axs[k].set_title(tt)
+
+        axs[k].set_xlim(del_range[0],del_range[-1])
+
+    axs[0].set_ylabel('Freq. Ratio $\omega_X/(\omega_Y+\delta)$')
         
     plt.tight_layout()
         
@@ -1109,7 +1140,7 @@ def load_tongue(system1,pl_list,exponents,mode='1d',
 
 def tongues_cgl():
     kw_cgl = copy.deepcopy(kw_cgl_template)
-    kw_cgl['rhs'] = c1.rhs
+    kw_cgl['rhs'] = c1.rhs_old2
      
     system1 = rsp(**{'pardict':pd_cgl_template,**kw_cgl})
     pl_list = [(1,1),(2,1),(3,1),(4,1)]
@@ -1117,7 +1148,6 @@ def tongues_cgl():
     fig,axs = plt.subplots(1,1,figsize=(8,2))
 
     for k in range(len(pl_list)):
-        
 
         exps = np.linspace(-15,0,50,endpoint=False)
         d1 = list(-2**exps[::-1]);d2 = list(2**exps)
@@ -1266,19 +1296,101 @@ def tongues_thal():
     return fig
 
 
-x_temp = np.linspace(-np.pi,3*np.pi,2000)
-def bif1d(a,eps,del1):
-    """
-    for coupling only
-    """
+def bif1d_cgl1():
+    
+    kw_cgl = copy.deepcopy(kw_cgl_template)
+    kw_cgl['rhs'] = c1.rhs_old2
+    system1 = rsp(**{'pardict':pd_cgl_template,**kw_cgl})
 
-    y = rhs_avg_1dc(0,x_temp,a,eps,del1)
+    pl_list = [(1,1),(2,1),(3,1),(4,1)]
+    e_list = [(.2,.2),(.1,.1),(.1,.1),(.1,.1)]
+    d_list = [(.01,.08),(.01,.025),(.001,.008),(.0007,.003)]
+    pmax_list = [1.5,1.5,1.5,1.5]
+    pmin_list = [-1,-1,-1,-1]
+    init_list = [1,1,.5,.5]
+
+    full_rhs = _full_cgl1
+
+    fig,axs = _setup_trajectories_plot(labels=False,hspace=.07)
+
+    k = 0
+    a = nmc(system1,None,
+            recompute_list=[],
+            _n=('om0',pl_list[k][0]),
+            _m=('om1',pl_list[k][1]),
+            NP=300,NH=300)
+
+    # add model diagrams
+    add_diagram_1d(axs[k][0,0],a,.01,(.001,.5,200),rhs=rhs_avg_1d)
+    add_diagram_2d(axs[k][1,0],a,.01,(.001,.5,100))
+    add_diagram_full(axs[k][2,0],a,.01,(.0275,.5,100),rhs=_full_cgl1)
+    #add_diagram_full(axs[0,2],a,.01,(.0275,.5,10),rhs=_full_cgl1,
+    #                 phi0=np.pi/4) # adds nothing
+
+    add_diagram_1d(axs[k][0,1],a,.08,(.001,.5,200),rhs=rhs_avg_1d)
+    add_diagram_2d(axs[k][1,1],a,.08,(.001,.5,100))
+    add_diagram_full(axs[k][2,1],a,.08,(.24,.5,100),rhs=_full_cgl1,
+                     recompute=True)
+
+    k = 1
+    a = nmc(system1,None,
+            recompute_list=[],
+            _n=('om0',pl_list[k][0]),
+            _m=('om1',pl_list[k][1]),
             
-    # get all zeros
-    z1 = x_temp[1:][(y[1:]>0)*(y[:-1]<=0)]
-    z2 = x_temp[1:][(y[1:]<0)*(y[:-1]>=0)]
+            NP=300,NH=300)
 
-    return z1,z2
+    # add model diagrams
+    add_diagram_1d(axs[k][0,0],a,.01,(.001,.5,200),rhs=rhs_avg_1d)
+    add_diagram_2d(axs[k][1,0],a,.01,(.001,.5,100))
+    add_diagram_full(axs[k][2,0],a,.01,(.056,.5,100),rhs=_full_cgl1,
+                     recompute=False)
+
+    add_diagram_1d(axs[k][0,1],a,.025,(.001,.5,200),rhs=rhs_avg_1d)
+    add_diagram_2d(axs[k][1,1],a,.025,(.001,.5,100))
+    #add_diagram_full(axs[k][2,1],a,.09,(.275,.5,100),rhs=_full_cgl1)
+
+
+    for i in range(len(axs)):
+        for j in range(3):
+            axs[i][j,0].set_ylabel(r'$\phi$')
+            for k in range(2):
+                axs[i][j,k].set_ylim(-.1,2*np.pi+.1)
+                axs[i][j,k].set_xlim(0,.5)
+            
+                axs[i][j,k].set_yticks(np.arange(0,3,1)*np.pi)
+                axs[i][j,k].set_yticklabels(pi_label_short)
+
+        for j in range(2):
+            axs[i][-1,j].set_xlabel(r'$\varepsilon$',labelpad=0)
+        
+    #axs[0,1].set_yticks(np.arange(0,3,1)*np.pi)
+    #axs[0,1].set_yticklabels(pi_label_short)
+
+    # set title
+    ct = 0
+    for k in range(len(axs)):
+        axs[k][0,0].set_title(labels[ct],loc='left')
+        ct += 1
+                              
+        axs[k][0,1].set_title(labels[ct],loc='left')
+        ct += 1
+
+    # fix title with parameter values
+    nr1,nc1 = axs[0].shape
+    for k in range(len(axs)):
+        for j in range(nc1):
+            ti1 = axs[k][0,j].get_title()
+            ti1 += str(pl_list[k][0])+':'+str(pl_list[k][1])
+            #t1 += r', $\varepsilon='+str(e_list[k])+'$'
+            ti1 += r', $\delta = '+str(d_list[k][j])+'$'
+            
+            axs[k][0,j].set_title(ti1)
+
+    axs[2][1,0].yaxis.labelpad=-10
+
+    return fig
+
 
 def bif1d_thal2():
 
@@ -1465,14 +1577,16 @@ def main():
 
         #(forcing_fn,[],['figs/f_forcing.pdf'],200),
         
-        #(trajectories_cgl,[],['figs/f_traj_cgl.pdf',
-        #                      'figs/f_traj_cgl.png'],200),
+        #(trajectories_cgl,[],['figs/f_traj_cgl1.pdf',
+        #                      'figs/f_traj_cgl1.png'],200),
+
+        
 
         #(trajectories_thal,[],['figs/f_traj_thal.pdf',
         #                       'figs/f_traj_thal.png'],200),
 
-        (trajectories_thal2,[],['figs/f_traj_thal2.pdf',
-                               'figs/f_traj_thal2.png'],200),
+        #(trajectories_thal2,[],['figs/f_traj_thal2.pdf',
+        #                       'figs/f_traj_thal2.png'],200),
 
         #(trajectories_thal2b,[],['figs/f_traj_thal2b.pdf',
         #                        'figs/f_traj_thal2b.png'],200),
@@ -1494,7 +1608,8 @@ def main():
         #                  'figs/f_tongues_thal.png'],200),
 
 
-        (bif1d_thal2,[],['figs/f_bif1d_thal2.png']),
+        (bif1d_cgl1,[],['figs/f_bif1d_cgl1.png']),
+        #(bif1d_thal2,[],['figs/f_bif1d_thal2.png']),
         #(bif1d_gt2,[],['figs/f_bif1d_gt2.png']),
 
     ]
