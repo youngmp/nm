@@ -1,3 +1,15 @@
 *~
 jupyter_unshared/
 *.log
+*.pyc
+*.npy
+*.png
+*.txt
+*.d
+*.pdf
+xppcall.py
+CGL.py
+batch_gw2.sh
+.DS_Store
+test.py
+theta.ode
