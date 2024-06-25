@@ -13,3 +13,10 @@ batch_gw2.sh
 .DS_Store
 test.py
 theta.ode
+bk/*
+bk1/*
+jupyter_unshared/*
+plots_gw2/*
+sol/*
+data/*
+duf1.py
