@@ -75,11 +75,16 @@ class Response(object):
                  rel_tol=1e-10,
 
                  save_fig=False,
+                 factor=1,
 
-                 mode='nm'):
+                 mode='nm',
+                 lc_prominence=0.25):
             
         var_names = copy.deepcopy(var_names)
         pardict = copy.deepcopy(pardict)
+
+        self.factor = 1 # scale response functions
+        self.lc_prominence = lc_prominence
         
         self.mode = mode
         self.save_fig = save_fig
@@ -185,6 +190,8 @@ class Response(object):
         if not(os.path.isdir(self.dir1)):
             os.mkdir(self.dir1)
 
+        print('mkdir',self.dir1)
+
         ########## define dicts
         self.lc = {};self.g = {}
         self.z = {};self.i = {}
@@ -279,7 +286,16 @@ class Response(object):
 
         print('self.T',self.T,'omfix',self.pardict[self.om_fix_key])
 
-        self.tlc,self.dtlc = np.linspace(0,self.T,self.TN,retstep=True)
+        self.tlc,self.dtlc = np.linspace(0,self.T,self.TN,retstep=True,
+                                         endpoint=False)
+        self.tlc_endpt,self.dtlc_endpt = np.linspace(0,self.T,self.TN+1,
+                                                     retstep=True,
+                                                     endpoint=True)
+
+        # tlc_enpt has the exact same points as tlc but with the
+        # final point being the endpoint.
+        # use tlc_endpt for integratin, tlc for interpolation.
+        
         self.lc['t'] = self.tlc
         
         self.lc['dat'] = z[:,1:]
@@ -291,12 +307,12 @@ class Response(object):
         imp_lc = sym.zeros(self.dim)
         for i,key in enumerate(self.var_names):
 
-            fn = interp1d(self.tlc[0],self.tlc[-1],
-                          self.dtlc,self.lc['dat'][:-1,i],p=True,k=9)
+            fn = interp1d(0,self.T,self.dtlc,self.lc['dat'][:-1,i],p=True,k=5)
             
-            imp = imp_fn('lc'+key+'_'+str(i),self.fmod(fn))
+            #imp = imp_fn('lc'+key+'_'+str(i),self.fmod(fn))
+            imp = imp_fn('lc'+key+'_'+str(i),fn)
             
-            self.lc['imp_'+key] = imp_fn(key,fn)
+            self.lc['imp_'+key] = imp #imp_fn(key,fn)
             self.lc['lam_'+key] = fn
             
             imp_lc[i] = self.lc['imp_'+key](self.t)
@@ -340,17 +356,19 @@ class Response(object):
             fig = plt.figure()
             ax = fig.add_subplot(111)
             ax.plot(sol.t,sol.y.T[:,0])
-            ax.set_xlim(sol.t[-1]-(sol.t[-1]/100),sol.t[-1])
+            ax.set_xlim(sol.t[-1]-(sol.t[-1]/10),sol.t[-1])
             plt.savefig('figs_temp/plot_limit_cycle_long.png')
+            #plt.show()
 
                 
-        T_init,res1 = get_period(sol)
+        T_init,res1 = get_period(sol,prominence=self.lc_prominence)
         init = np.append(sol.sol(res1),T_init)
 
         print('t init',T_init)
 
         counter = 0
-        while np.linalg.norm(dy) > tol_root:
+        while np.linalg.norm(dy) > tol_root and\
+              counter < self.max_iter:
         
             J = np.zeros((self.dim+1,self.dim+1))
             t = np.linspace(0,init[-1],self.TN)
@@ -445,7 +463,7 @@ class Response(object):
         # run finalized limit cycle solution
         sol = solve_ivp(self.rhs,[0,sol.t[-1]],sol.y.T[peak_idx,:],
                         method=self.method,
-                        t_eval=np.linspace(0,sol.t[-1],self.TN),
+                        t_eval=np.linspace(0,sol.t[-1],self.TN+1),
                         rtol=1e-13,atol=1e-13,
                         args=(pardict,'value',self.idx))
 
@@ -468,8 +486,8 @@ class Response(object):
             init = np.reshape(initm,r*c)
 
             start = time.time();
-            sol = solve_ivp(self.monodromy,[0,self.tlc[-1]],init,
-                            t_eval=self.tlc,
+            sol = solve_ivp(self.monodromy,[0,self.T],init,
+                            t_eval=self.tlc_endpt,
                             method=self.method,
                             rtol=1e-13,atol=1e-13)
             
@@ -609,6 +627,8 @@ class Response(object):
                 
             else:
                 data = np.loadtxt(fname)
+
+            data *= self.factor
     
             self.g['dat'].append(data)
             if self.save_fig:
@@ -616,8 +636,8 @@ class Response(object):
             
             for j,key in enumerate(self.var_names):
                 
-                fn = interp1d(self.tlc[0],self.tlc[-1],
-                              self.dtlc,data[:-1,j],p=True,k=9)
+                fn = interp1d(self.tlc[0],self.T,
+                              self.dtlc,data[:-1,j],p=True,k=3)
                 imp = imp_fn('g'+key+'_'+str(i),fn)
                 
                 self.g['imp_'+key].append(imp)
@@ -662,7 +682,7 @@ class Response(object):
         # load kth expansion of g for k >= 0
         if k == 0:
             # g0 is 0. do this to keep indexing simple.
-            return np.zeros((self.TN,len(self.var_names)))
+            return np.zeros((self.TN+1,len(self.var_names)))
         
         if k == 1:
             # pick correct normalization
@@ -678,10 +698,10 @@ class Response(object):
         
         # get full solution
         if backwards:
-            tlc = -self.tlc
+            tlc = -self.tlc_endpt
             
         else:
-            tlc = self.tlc
+            tlc = self.tlc_endpt
 
         sol = solve_ivp(self._dg,[0,tlc[-1]],
                         init,args=(k,het_vec),
@@ -689,8 +709,7 @@ class Response(object):
                         method=self.method,
                         rtol=self.rtol,atol=self.atol,
                         dense_output=True)
-        
-        
+
         if backwards:
             gu = sol.y.T[::-1,:]
             
@@ -726,14 +745,16 @@ class Response(object):
             else:
                 data = np.loadtxt(fname)
 
+            data *= self.factor
+
             self.z['dat'].append(data)
             if self.save_fig:
                 self.save_temp_figure(data,i,'z')
             
             for j,key in enumerate(self.var_names):
 
-                fn = interp1d(self.tlc[0],self.tlc[-1],
-                              self.dtlc,data[:-1,j],p=True,k=9)
+                fn = interp1d(self.tlc[0],self.T,
+                              self.dtlc,data[:-1,j],p=True,k=3)
                 imp = imp_fn('z'+key+'_'+str(i),fn)
                 
                 self.z['imp_'+key].append(imp)
@@ -781,10 +802,10 @@ class Response(object):
                                   backwards=backwards)
         
         if backwards:
-            tlc = -self.tlc
+            tlc = -self.tlc_endpt
             
         else:
-            tlc = self.tlc
+            tlc = self.tlc_endpt
             
         sol = solve_ivp(self._dz,[0,tlc[-1]],
                         init,args=(k,het_vec),
@@ -836,6 +857,8 @@ class Response(object):
             else:
                 data = np.loadtxt(fname)
 
+            data *= self.factor
+
             self.i['dat'].append(data)
 
             if self.save_fig:
@@ -843,8 +866,8 @@ class Response(object):
             
             for j,key in enumerate(self.var_names):
 
-                fn = interp1d(self.tlc[0],self.tlc[-1],
-                              self.dtlc,data[:-1,j],p=True,k=9)
+                fn = interp1d(self.tlc[0],self.T,
+                              self.dtlc,data[:-1,j],p=True,k=3)
                 imp = imp_fn('i'+key+'_'+str(i),fn)
                 
                 self.i['imp_'+key].append(imp)
@@ -905,10 +928,10 @@ class Response(object):
                                    exception=exception)
 
         if backwards:
-            tlc = -self.tlc
+            tlc = -self.tlc_endpt
             
         else:
-            tlc = self.tlc
+            tlc = self.tlc_endpt
         
         sol = solve_ivp(self._di,[0,tlc[-1]],init,
                         args=(k,het_vec),
@@ -1185,17 +1208,18 @@ class Response(object):
 
             # evaluate
             if fn_type == 'g' and (k == 0 or k == 1):
-                y = np.zeros(self.TN)
+                y = np.zeros(self.TN+1)
             elif fn_type == 'z' and k == 0:
-                y = np.zeros(self.TN)
+                y = np.zeros(self.TN+1)
             elif fn_type == 'i' and k == 0:
-                y = np.zeros(self.TN)
+                y = np.zeros(self.TN+1)
             elif sym_fn == 0:
-                y= np.zeros(self.TN)
+                y= np.zeros(self.TN+1)
             else:
-                y = lam(self.tlc)
+                y = lam(self.tlc_endpt)
             
-            fn = interp1d(self.tlc[0],self.tlc[-1],self.dtlc,y[:-1],p=True,k=9)
+            #fn = interp1d(0,self.T,self.dtlc,y[:-1],p=True,k=3)
+            fn = interp1d(self.tlc[0],self.T,self.dtlc,y[:-1],p=True,k=3)
             imp = imp_fn(key,fn)
             
             # save as implemented fn
@@ -1230,7 +1254,7 @@ class Response(object):
         
         for j,ax in enumerate(axs):
             key = self.var_names[j]
-            ax.plot(self.tlc,data[:,j],label=key)
+            ax.plot(self.tlc_endpt,data[:,j],label=key)
             ax.legend()
 
         print(fn+str(k)+' ini'+str(data[0,:]))
