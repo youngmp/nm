@@ -84,13 +84,20 @@ warnings.filterwarnings('ignore',category=dill.PicklingWarning)
 warnings.filterwarnings('ignore',category=dill.UnpicklingWarning)
 
 import pyfftw
+import multiprocessing
 
-fftw = pyfftw.interfaces.numpy_fft.fft
-ifftw = pyfftw.interfaces.numpy_fft.ifft
-fftw2 = pyfftw.interfaces.numpy_fft.fft2
-ifft2 = pyfftw.interfaces.numpy_fft.ifft2
-fftwn = pyfftw.interfaces.numpy_fft.fftn
-ifftn = pyfftw.interfaces.numpy_fft.ifftn
+pyfftw.interfaces.cache.enable()
+pyfftw.config.NUM_THREADS = multiprocessing.cpu_count()-1
+pyfftw.config.PLANNER_EFFORT = 'FFTW_MEASURE'
+
+fftw = pyfftw.interfaces.scipy_fft.fft
+ifftw = pyfftw.interfaces.scipy_fft.ifft
+fftw2 = pyfftw.interfaces.scipy_fft.fft2
+ifft2 = pyfftw.interfaces.scipy_fft.ifft2
+fftwn = pyfftw.interfaces.scipy_fft.fftn
+ifftn = pyfftw.interfaces.scipy_fft.ifftn
+
+
 
 exp = np.exp
 
@@ -137,14 +144,17 @@ class nmCoupling(object):
                  recompute_list=[],
                  load_only_expansions=False,
                  del1=0,
-                 iso_mode=False):
+                 iso_mode=False,
+                 pv2=False):
 
         """
         iso_mode: True loads only isostables, no p_i or H functions
+        pv2: use v2 of generate_p
         N=2 only.
         Reserved names: ...        
         """
 
+        self.pv2 = pv2
         self.iso_mode = iso_mode
         self.load_only_expansions = load_only_expansions
         self.save_fig = save_fig
@@ -193,6 +203,7 @@ class nmCoupling(object):
 
         # discretization for p_X,p_Y
         self.NP = NH
+        
         self.x,self.dx = np.linspace(0,2*np.pi,self.NP,retstep=True,
                                      endpoint=False)
         
@@ -268,10 +279,12 @@ class nmCoupling(object):
         self.t,self.dt = np.linspace(0,2*np.pi,100,retstep=True)
 
         if self.pfactor is None:
-            pfactor1 = int((np.log(.05)/system1.kappa_val))
-            pfactor2 = int((np.log(.05)/system2.kappa_val))
-            
+            pfactor1 = int((np.log(.01)/system1.kappa_val)/self.T)
+            pfactor2 = int((np.log(.01)/system2.kappa_val)/self.T)
+
             self.pfactor = max([pfactor1,pfactor2])
+
+            print('pfactor',self.pfactor)
         
         # just keep these here.
         system2.h['dat']={};system2.h['imp']={};system2.h['lam']={}
@@ -347,8 +360,14 @@ class nmCoupling(object):
                 self.load_p_sym(system2)
 
                 for i in range(system1.miter):
-                    self.load_p(system1,system2,i)
-                    self.load_p(system2,system1,i)
+
+                    if self.pv2:
+                        self.load_p_v2(system1,system2,i)
+                        self.load_p_v2(system2,system1,i)
+
+                    else:
+                        self.load_p(system1,system2,i)
+                        self.load_p(system2,system1,i)
 
                 # load het. terms (mean of z and i expansions in $\ve$).
                 #self.load_response_eps(system1)
@@ -809,9 +828,6 @@ class nmCoupling(object):
         h1a_lam = lambdify(self.ths,d1)
         
         x = np.linspace(0,2*np.pi,100)
-        for i in range(self.NH):
-            pass
-        
         
         
     def load_p_sym(self,system1):
@@ -865,7 +881,8 @@ class nmCoupling(object):
            or file_dne:
             
             
-            p_data = self.generate_p_square(system1,system2,k)
+            #p_data = self.generate_p_square(system1,system2,k)
+            p_data = self.generate_p(system1,system2,k)
 
 
             #if not(self.forcing):
@@ -957,26 +974,41 @@ class nmCoupling(object):
             return data
         
         lam1 = lambdify(self.ths,ph_imp1)        
-        
-        x=self.x;dx=self.dx;pfactor=self.pfactor
+
+        #x = self.an;dx = self.dan
+        x=self.x;dx=self.dx;
+        pfactor=self.pfactor
         sm=np.arange(0,self.T*pfactor,dx)*m
         
         fac = self.om*(1-system1.idx) + system1.idx
         exp1 = exp(fac*sm*system1.kappa_val)
 
         g_in = np.fft.fft(exp1)
-        a_i = np.arange(NP,dtype=int)
+        a_i = np.arange(m*NP,dtype=int)
         
-        #for ll in range(len(an)):
-        for ll in range(len(x)):
+        for ll in range(n*NP):
 
-            f_in = np.fft.fft(lam1(x[ll]*n+self.om*sm,sm))
-            conv = np.fft.ifft(f_in*g_in)
-            #data[(a_i+ll)%int(n*NP),a_i] = conv[-int(m*NP):].real
-            data[(a_i+ll)%NP,a_i] = conv[-NP:].real
-            #data[ll,:] = conv[-self._m[1]*NP:].real
+            f1 = lam1(x[ll%NP]*n+self.om*sm,sm)
+            f_in = fftw(f1)
+            conv = ifftw(f_in*g_in).real
+            data[(a_i+ll)%(n*NP),a_i] = conv[-m*NP:]
 
-        return fac*data*self.dan
+            if ll == 0 and False:
+                fig,axs = plt.subplots(3,1)
+                axs[0].plot(f1[-m*NP:])
+
+                sm2 = np.arange(0,4*np.pi,dx)
+                axs[0].scatter(np.arange(len(sm2)),lam1(0+sm2/2,sm2),s=1)
+                axs[1].plot(exp1)
+                axs[2].plot(conv[-m*NP:])
+                
+                axs[0].set_title('integrand 1')
+                axs[1].set_title('integrand 2')
+                axs[2].set_title('conv')
+                
+                plt.show()
+
+        return fac*data*dx*m
 
 
     def generate_p_square(self,system1,system2,k):
@@ -995,8 +1027,6 @@ class nmCoupling(object):
                 **system2.rule_par,**system1.rule_lc,**system2.rule_lc,
                 **system1.rule_i,**system2.rule_i,**system1.rule_g,
                 **system2.rule_g}
-
-        #print('check rule for system',system1.idx,rule)
         
         if self.forcing:
             imp0 = imp_fn('forcing',system2)
@@ -1004,8 +1034,6 @@ class nmCoupling(object):
             rule.update({system2.syms[0]:imp0(self.ths[1])})
 
         ph_imp1 = system1.p['sym'][k].subs(rule)
-
-        #print('ph_imp1',ph_imp1,'system',system1.idx)
 
         if ph_imp1 == 0: # keep just in case
             return data
@@ -1024,16 +1052,132 @@ class nmCoupling(object):
         exp1 = exp(fac*sm*system1.kappa_val)
 
         g_in = fftw(exp1)
+
         a_i = np.arange(NP,dtype=int)
 
         for ll in range(len(x)):
-
             f_in = fftw(lam1(x[ll]*self._n[1]+self.om*sm,sm))
             conv = ifftw(f_in*g_in)
             data[(a_i+ll)%NP,a_i] = conv[-m*NP:].real[::m]
 
         return fac*data*self.dan
+
+
+    def load_p_v2(self,system1,system2,k):
+        """
+        same as load_p but exploits assumed periodicity.
+        uses generate_p_square_v2
+        """
+
+        fname = system1.p['fnames_data_v2'][k]
+        file_dne = not(os.path.isfile(fname))
+        
+        if 'p_data_'+system1.model_name in self.recompute_list or file_dne:
+            
+            p_data = self.generate_p_square_v2(system1,system2,k)
+                
+            np.savetxt(system1.p['fnames_data_v2'][k],p_data)
+
+        else:
+            
+            p_data = np.loadtxt(fname)
+
+        system1.p['dat'][k] = p_data
+
+        n=self._n[1];m=self._m[1]
+        x=self.x;dx=self.dx
+
+        p_interp = interp2d([0,0],[self.T*n,self.T*m],[dx*n,dx*m],p_data,
+                            k=3,p=[True,True])
+
+        ta = self.ths[0];tb = self.ths[1]
+        name = 'p_'+system1.model_name+'_'+str(k)
+        p_imp = imp_fn(name,self.fast_interp_lam(p_interp))
+        lamtemp = lambdify(self.ths,p_imp(ta,tb))
+        
+
+        if k == 0:
+            imp = imp_fn('p_'+system1.model_name+'_0', lambda x: 0*x)
+            system1.p['imp'][k] = imp
+            system1.p['lam'][k] = 0
+            
+            
+        else:
+            system1.p['imp'][k] = p_imp
+            system1.p['lam'][k] = lamtemp#p_interp
+
+        if self.save_fig:
+            
+            fig,axs = plt.subplots()
+            axs.imshow(p_data)
+            pname = 'figs_temp/p_'
+            pname += system1.model_name+str(k)
+            pname += '_'+str(n)+str(m)
+            pname += '.png'
+            plt.savefig(pname)
+            plt.close()
+
+        # put these implemented functions into the expansion
+        system1.rule_p.update({sym.Indexed('p_'+system1.model_name,k):
+                               system1.p['imp'][k](ta,tb)})
+
     
+    def generate_p_square_v2(self,system1,system2,k):
+        """
+        same as generate_p_square but ignores redundant periodicity.
+        the redundancy is an assumption.
+        """
+        
+        print('p order='+str(k))
+
+        n = self._n[1];m = self._m[1]
+        NP = self.NP
+        data = np.zeros([NP,NP])
+        
+        if k == 0: # p_i^{(0)} is 0
+            return data
+
+        kappa1 = system1.kappa_val
+
+        rule = {**system1.rule_p,**system2.rule_p,**system1.rule_par,
+                **system2.rule_par,**system1.rule_lc,**system2.rule_lc,
+                **system1.rule_i,**system2.rule_i,**system1.rule_g,
+                **system2.rule_g}
+        
+        if self.forcing:
+            imp0 = imp_fn('forcing',system2)
+            lam0 = lambdify(self.ths[1],imp0(self.ths[1]))
+            rule.update({system2.syms[0]:imp0(self.ths[1])})
+
+        ph_imp1 = system1.p['sym'][k].subs(rule)
+
+        if ph_imp1 == 0: # keep just in case
+            return data
+        
+        lam1 = lambdify(self.ths,ph_imp1)        
+        
+        x=self.x;dx=self.dx # _n left out of dx intentionally
+        # dx for sm shouldn't change
+        # it's only when _n != 1 that the input to
+        # theta_X should change.
+        # this is due to how time is rescaled using \omega_Y.
+        pfactor = self.pfactor
+        sm = np.arange(0,self.T*pfactor*m,dx)
+        
+        fac = self.om*(1-system1.idx) + system1.idx
+        exp1 = exp(fac*sm*system1.kappa_val)
+
+        g_in = fftw(exp1)
+        
+        a_i = np.arange(NP,dtype=int)
+
+        for ll in range(len(x)):
+            f_in = fftw(lam1(x[ll]*self._n[1]+self.om*sm,sm))
+            conv = ifftw(f_in*g_in)
+            data[(a_i+ll)%NP,a_i] = conv[-NP:].real
+
+        return fac*data*self.dan
+
 
     def load_response_eps(self,system):
         """
