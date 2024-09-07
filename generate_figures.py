@@ -19,13 +19,14 @@ import thal1 as t1
 import thal2 as t2
 
 import gw2
+import gwt
 
 import gt
 
 from lib.util import (follow_phase_diffs, dy_r3d, phase_lock_r3d,
                       dy_r3d, get_pl_range_r3d, follow_locking_3d)
 
-from lib.rhs import _full, _redu_3dc_gw, _redu_3dc_thal
+from lib.rhs import _full, _redu_3dc_gw, _redu_3dc_thal, _redu_3dc_gwt
 from lib.functions import *
 from lib.plot_util import *
 
@@ -46,6 +47,7 @@ import sympy as sym
 import scipy as sp
 
 
+_redu_3dc = _redu_3dc_thal
 
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
@@ -123,6 +125,7 @@ kw_thal_template = {'var_names':['v','h','r'],
                     'forcing_fn':g1,
                     'factor':0.5,
                     'save_fig':False,
+                    'dir_root':'jupyter/data'
                     }
 
 pd_gw_template = {'v1':.84,'v2':.42,'v4':.35,'v6':.35,'v8':1,
@@ -145,8 +148,9 @@ kw_gw_template = {'var_names':['x','y','z','v'],
                   'rel_tol':1e-9,
                   'save_fig':False,
                   'lc_prominence':0.05,
-                  'factor':0.5}
-
+                  'factor':0.5,
+                  'dir_root':'jupyter/data'}
+    
 
 kw_sim = {'rtol':1e-7,'atol':1e-7,'method':'LSODA'}
 
@@ -154,7 +158,8 @@ pi_label_short = [r"$0$", r"$\pi$", r"$2\pi$"]
 pi_label_half = [r"$0$", r"$\pi/2$", r"$\pi$"]
 pi_label_third = [r"$0$", r"$\pi/3$", r"$2\pi/3$"]
 
-
+# Marker for max frequency difference
+MAX_DIFF = 0.02
 
 def forcing_fn():
 
@@ -193,7 +198,6 @@ def forcing_fn():
 
     return fig
 
-    
 
 def load_tongue(n,m,pd1,pd2,kws1,kws2,model_name='cglf0',dir1='',
                 recompute=False,dlo=-17,dhi=3,Nd=30):
@@ -241,9 +245,6 @@ def load_tongue(n,m,pd1,pd2,kws1,kws2,model_name='cglf0',dir1='',
     return data
 
 
-
-
-
 def _full_cgl1(t,y,a,eps=0,del1=0):
     pd1 = a.system1.pardict
     omx = a._n[1];omf = a._m[1]
@@ -262,18 +263,7 @@ def _full_thal1(t,y,a,eps=0,del1=0):
     out1 = t1.rhs(t,y,pd1,'val',0) + eps*ofix*omx*np.array([u,0,0])
     return np.array(list(out1))
 
-def _full_thal2(t,y,a,eps=0,del1=0):
-    pd1 = a.system1.pardict;pd2 = a.system2.pardict
-    y1 = y[:4];y2 = y[4:]
-    
-    c1 = t2.coupling(y,pd1,'val',0)
-    c2 = t2.coupling(list(y2)+list(y1),pd2,'val',1)
-    
-    out1 = t2.rhs(t,y1,pd1,'val',0) + eps*(del1 +c1)
-    out2 = t2.rhs(t,y2,pd2,'val',1) + eps*c2
-    return np.array(list(out1)+list(out2))
-
-def _full_gt2(t,y,a,eps=0,del1=0):
+def _full_gwt(t,y,a,eps=0,del1=0):
     pd1 = a.system1.pardict;pd2 = a.system2.pardict
     y1 = y[:4];y2 = y[4:]
     
@@ -285,7 +275,7 @@ def _full_gt2(t,y,a,eps=0,del1=0):
     return np.array(list(out1)+list(out2))
 
 
-def _full_gw2(t,y,a,eps,del1):
+def _full_gw2(t,y,a,eps,del1=0):
     pd1 = a.system1.pardict;pd2 = a.system2.pardict
     om_fix = pd1['om_fix0']
     y1 = y[:4];y2 = y[4:]
@@ -553,7 +543,7 @@ def draw_solutions(axs,a,T,eps,del1,pmax,pmin,init,full_rhs):
 
     return axs
 
-def trajectories_cgl1():
+def traj_cgl1():
     """
     Plot phase plane, phase line, and phases over time
     """
@@ -612,7 +602,7 @@ def trajectories_cgl1():
     return fig
 
 
-def trajectories_thal1():
+def traj_thal1():
     """
     Plot phase plane, phase line, and phases over time
     """
@@ -668,21 +658,92 @@ def trajectories_thal1():
     return fig
 
 
-def trajectories_gw2():
+def traj_gw2():
     """
     pair of goodwin oscillators
     """
     
-    kw_thal = copy.deepcopy(kw_gw_template)
-    kw_thal['rhs'] = t2.rhs
-    kw_thal['var_names'] = ['v','h','r','w']
-    kw_thal['init'] = np.array([-.64,0.71,0.25,0,6.28])
-    kw_thal['forcing_fn'] = None
-    kw_thal['coupling'] = t2.coupling
-    kw_thal['trunc_order'] = 3
+    kw_gw = copy.deepcopy(kw_gw_template)
+    kw_gw['rhs'] = gw2.rhs
+    kw_gw['var_names'] = ['x','y','z','v']
+    kw_gw['init'] = np.array([.3882,.523,1.357,.4347,24.2])
+    kw_gw['forcing_fn'] = None
+    kw_gw['coupling'] = gw2.coupling
+    kw_gw['trunc_order'] = 3
+
+    pd_gw_template2 = deepcopy(pd_gw_template)
+    
+    kw_gw['model_name'] = 'gw0';kw_gw['idx']=0
+    system1 = rsp(**{'pardict':pd_gw_template2,**kw_gw})
+
+    kw_gw['model_name'] = 'gw1';kw_gw['idx']=1
+    system2 = rsp(**{'pardict':pd_gw_template2,**kw_gw})
+
+    T_list = [1000,5000,5000,5000]
+
+    pl_list = [(1,1),(1,2),(2,1),(2,3)]
+    N_list = [1000,1024,1024,1024]
+    
+    e_list = [(.04,.04),(.05,.05),(.1,.1),(.06,.06)]
+    d_list = [(0,.03),(0,.0003),(0,.001),(0,.0047)]
+    
+    skipn_list = [50,20,50,50]
+    init_list = [3,2,np.pi,.5]
+
+    full_rhs = _full_gw2
+    fig,axs_list = _setup_trajectories_plot(mode='c')
+    
+    for k in range(len(axs_list)):
+        for j in range(2):
+            print('e',e_list[k][j],';','d',d_list[k][j])
+            # run simulations and plot
+
+            a = nmc(system1,system2,
+                    #recompute_list=recompute_list,
+                    _n=('om0',pl_list[k][0]),
+                    _m=('om1',pl_list[k][1]),
+                    save_fig=False,NH=N_list[k],
+                    del1=d_list[k][j])
+        
+            draw_full_solutions(axs_list[k][-1,j],a,T_list[k],e_list[k][j],
+                                init_list[k],full_rhs=full_rhs,
+                                skipn=skipn_list[k])
+
+            draw_1d_rhs(axs_list[k][0,j],a,T_list[k],e_list[k][j],init_list[k])
+            
+            draw_1d_solutions(axs_list[k][-1,j],a,T_list[k],e_list[k][j],
+                              init_list[k])
+
+            draw_3d_solutions(axs_list[k][-1,j],a,T_list[k],e_list[k][j],
+                              init_list[k],rhs=_redu_3dc_thal)
+
+            
+    # set title
+    ct = 0
+    for k in range(len(axs_list)):
+        axs_list[k][0,0].set_title(labels[ct],loc='left')
+        ct += 1
+                              
+        axs_list[k][0,1].set_title(labels[ct],loc='left')
+        ct += 1
+
+    # fix title with parameter values
+    nr1,nc1 = axs_list[0].shape
+    for k in range(len(axs_list)):
+        for j in range(nc1):
+            ti1 = axs_list[k][0,j].get_title()
+            ti1 += str(pl_list[k][0])+':'+str(pl_list[k][1])
+            #t1 += r', $\varepsilon='+str(e_list[k])+'$'
+            ti1 += r', $\delta = '+str(d_list[k][j])+'$'
+            
+            axs_list[k][0,j].set_title(ti1)
+
+    axs_list[0][1,1].legend()
+
+    return fig
     
 
-def trajectories_thal2():
+def traj_thal2():
     """
     Plot phase plane, phase line, and phases over time
     for a pair of thalamic oscillators
@@ -694,38 +755,42 @@ def trajectories_thal2():
     kw_thal['init'] = np.array([-.64,0.71,0.25,0,6.28])
     kw_thal['forcing_fn'] = None
     kw_thal['coupling'] = t2.coupling
-    kw_thal['trunc_order'] = 3
+    kw_thal['trunc_order'] = 2
     #kw_thal['save_fig'] = True
+    kw_thal['TN'] = 5000
 
     pd_thal_template2 = deepcopy(pd_thal_template)
     pd_thal_template2['ib'] = 3.5
+    pd_thal_template2['esyn'] = -1
     
-    kw_thal['model_name'] = 'thal0';kw_thal['idx']=0
+    kw_thal['model_name'] = 'thal0_35';kw_thal['idx']=0
     system1 = rsp(**{'pardict':pd_thal_template2,**kw_thal})
 
-    kw_thal['model_name'] = 'thal1';kw_thal['idx']=1
+    kw_thal['model_name'] = 'thal1_35';kw_thal['idx']=1
     system2 = rsp(**{'pardict':pd_thal_template2,**kw_thal})
 
     #pl_list = [(1,1),(2,1),(1,2),(2,3)]
-    T_list = [3000,200,1000,2000]
+    T_list = [3000,1500,5000,2000]
     #N_list = [500,500,500,500]
 
     pl_list = [(1,1),(1,2),(2,1),(2,3)]
-    N_list = [1100,1500,1500,1500]
+    N_list = [1024,1000,1000,1000]
     
-    e_list = [(.093,.093),(.1,.1),(.1,.1),(.1,.1)]
-    d_list = [(.0,.001),(.0,.017),(.0,.008),(0,.001)]
+    e_list = [(.093,.093),(.08,.08),(.025,.025),(.1,.1)]
+    d_list = [(0,.001),(0.017,.0178),(0,.01),(0,.005)]
     
     skipn_list = [50,20,50,50]
     
-    init_list = [.5,0,0,.5]
+    init_list = [.5,0,0,2]
+    rlist = [[False,False],[False,False],[False,False],[False,False]]
 
-    full_rhs = _full_thal2
+    full_rhs = _full
     fig,axs_list = _setup_trajectories_plot(mode='c')
+    
     # axs is a list of four plot objects, each with 2x2 subplots.
 
-    for k in range(len(axs_list[:3])):
-        print('e',e_list[k],';','d',d_list[k])
+    for k in range(len(axs_list)):
+        print('pl',pl_list[k],'e',e_list[k],';','d',d_list[k])
 
         for j in range(2):
             # run simulations and plot
@@ -742,7 +807,7 @@ def trajectories_thal2():
         
             draw_full_solutions(axs_list[k][-1,j],a,T_list[k],e_list[k][j],
                                 init_list[k],full_rhs=full_rhs,
-                                skipn=skipn_list[k])
+                                skipn=skipn_list[k],recompute=rlist[k][j])
 
             draw_1d_rhs(axs_list[k][0,j],a,T_list[k],e_list[k][j],init_list[k])
             
@@ -779,152 +844,100 @@ def trajectories_thal2():
     return fig
 
 
-def trajectories_thal2b():
+
+def traj_gwt():
     """
     Plot phase plane, phase line, and phases over time
     """
-    
+
     kw_thal = copy.deepcopy(kw_thal_template)
     kw_thal['rhs'] = t2.rhs
     kw_thal['var_names'] = ['v','h','r','w']
     kw_thal['init'] = np.array([-.64,0.71,0.25,0,6.28])
     kw_thal['forcing_fn'] = None
-    kw_thal['coupling'] = t2.coupling
+    kw_thal['coupling'] = gwt.coupling_thal
     kw_thal['trunc_order'] = 3
+    kw_thal['TN'] = 20000
     #kw_thal['save_fig'] = True
+    del kw_thal['idx']
+    del kw_thal['model_name']
 
-    pd_thal = copy.deepcopy(pd_thal_template)
-    pd_thal['ib'] = 8.5
+    pd_thal = deepcopy(pd_thal_template)
+    pd_thal['esyn'] = -90
+
+    kw_gw = copy.deepcopy(kw_gw_template)
+    kw_gw['coupling'] = gwt.coupling_gw
+    kw_gw['forcing_fn'] = None
+    kw_gw['TN'] = 20000
+    kw_gw['trunc_order'] = 3
     
-    kw_thal['model_name'] = 'thal0b';kw_thal['idx']=0
-    system1 = rsp(**{'pardict':pd_thal,**kw_thal})
+    pd_gw = pd_gw_template
+    
+    system1 = rsp(idx=0,model_name='gwt0',**{'pardict':pd_thal,**kw_thal})
+    system2 = rsp(idx=1,model_name='gwt1',**{'pardict':pd_gw,**kw_gw})
 
-    kw_thal['model_name'] = 'thal1b';kw_thal['idx']=1
-    system2 = rsp(**{'pardict':pd_thal,**kw_thal})
+    T_list = [1000,250,2000,1000]
+    
+    pl_list = [(1,1),(1,2),(2,1),(2,3)]
+    N_list = [2048]*4
 
-    pl_list = [(1,1),(2,1),(1,2),(2,3)]
-    T_list = [1000,250,500,500]
-    e_list = [.15,.15,.1,.1]
-    d_list = [(.0,.01),(.01,.05),(.0,.03),(.0,.01)]
-    pmax_list = [.5,.5,.5,.5]
-    pmin_list = [-.5,-.5,-.5,-.5]
-    init_list = [5,3,5,5]
+    e_list = [(.06,.06),(.1,.1),(.05,.05),(.05,.05)]
+    d_list = [(0,.16),(0,.12),(0,.075),(0,.05)]
 
-    full_rhs = _full_thal2
-    fig,axs = _setup_trajectories_plot(mode='c')
+    skipn_list = [50]*4
+    init_list = [0]*4
 
-    for k in range(len(axs[:1])):
-        # run simulations and plot
-        a = nmc(system1,system2,
-                #recompute_list=['h_dat_thal0','h_dat_thal1'],
-                _n=('om0',pl_list[k][0]),
-                _m=('om1',pl_list[k][1]),
-                save_fig=True,
-                NP=500,NH=500)
+    full_rhs = _full
+    fig, axs_list = _setup_trajectories_plot(mode='c')
 
-        #a.Tmax = T_list[k]
-        #a.eps_val = e_list[k]
-        #a.del1_val = d_list[k]
-        #a.pmin = pmin_list[k]
-        #a.pmax = pmax_list[k]
+    for k in range(len(axs_list)):
+        for j in range(2):
+            print('(n,m) =',pl_list[k],'e',e_list[k][j],';','d',d_list[k][j])
+            # run simulations and plot
+
+            a = nmc(system1,system2,
+                    #recompute_list=recompute_list,
+                    _n=('om0',pl_list[k][0]),
+                    _m=('om1',pl_list[k][1]),
+                    save_fig=False,NH=N_list[k],
+                    del1=d_list[k][j])
         
-        draw_solutions(axs[k],a,T_list[k],e_list[k],d_list[k],
-                       pmax_list[k],pmin_list[k],init_list[k],
-                       full_rhs)
+            draw_full_solutions(axs_list[k][-1,j],a,T_list[k],e_list[k][j],
+                                init_list[k],full_rhs=full_rhs,
+                                skipn=skipn_list[k])
+
+            draw_1d_rhs(axs_list[k][0,j],a,T_list[k],e_list[k][j],init_list[k])
+            
+            draw_1d_solutions(axs_list[k][-1,j],a,T_list[k],e_list[k][j],
+                              init_list[k])
+
+            draw_3d_solutions(axs_list[k][-1,j],a,T_list[k],e_list[k][j],
+                              init_list[k],rhs=_redu_3dc_gwt)
 
         del a
             
     # set title
     ct = 0
-    for k in range(len(axs)):
-        axs[k][0,0].set_title(labels[ct],loc='left')
+    for k in range(len(axs_list)):
+        axs_list[k][0,0].set_title(labels[ct],loc='left')
         ct += 1
                               
-        axs[k][0,1].set_title(labels[ct],loc='left')
+        axs_list[k][0,1].set_title(labels[ct],loc='left')
         ct += 1
 
     # fix title with parameter values
-    nr1,nc1 = axs[0].shape
-    for k in range(len(axs)):
+    nr1,nc1 = axs_list[0].shape
+    for k in range(len(axs_list)):
+        axs = axs_list[k]
         for j in range(nc1):
-            ti1 = axs[k][0,j].get_title()
+            ti1 = axs[0,j].get_title()
             ti1 += str(pl_list[k][0])+':'+str(pl_list[k][1])
             #t1 += r', $\varepsilon='+str(e_list[k])+'$'
             ti1 += r', $\delta = '+str(d_list[k][j])+'$'
             
-            axs[k][0,j].set_title(ti1)
+            axs[0,j].set_title(ti1)
 
-    return fig
-
-
-def trajectories_gt2():
-    """
-    Plot phase plane, phase line, and phases over time
-    """
-    
-    kw_thal = copy.deepcopy(kw_thal_template)
-    kw_thal['rhs'] = t2.rhs
-    kw_thal['var_names'] = ['v','h','r','w']
-    kw_thal['init'] = np.array([-.64,0.71,0.25,0,6.28])
-    kw_thal['forcing_fn'] = None
-    kw_thal['coupling'] = gt.coupling_tm
-    #kw_thal['save_fig'] = True
-    kw_thal['trunc_order'] = 3
-    
-    kw_thal['model_name'] = 'gt0';kw_thal['idx']=0
-    system1 = rsp(**{'pardict':pd_thal_template,**kw_thal})
-
-    kw_gw = copy.deepcopy(kw_gw_template)
-    kw_gw['model_name'] = 'gt1';kw_gw['idx']=1
-    kw_gw['trunc_order'] = 3
-    
-    system2 = rsp(**{'pardict':pd_gw_template,**kw_gw})
-
-    pl_list = [(1,1),(2,1),(1,2),(2,3)]
-    T_list = [500,250,500,500]
-    e_list = [.048,.1,.1,.1]
-    d_list = [(-.055,.03),(.01,.05),(.0,.03),(.0,.01)]
-    pmax_list = [.5,.5,.5,.5]
-    pmin_list = [-.5,-.5,-.5,-.5]
-    init_list = [np.pi,0,5,5]
-
-    full_rhs = _full_gt2
-    fig,axs = _setup_trajectories_plot(mode='c')
-
-    for k in range(len(axs[:1])):
-        # run simulations and plot
-        a = nmc(system1,system2,
-                recompute_list=[],
-                _n=('om0',pl_list[k][0]),
-                _m=('om1',pl_list[k][1]),
-                NP=300,NH=300)
-
-        draw_solutions(axs[k],a,T_list[k],e_list[k],d_list[k],
-                       pmax_list[k],pmin_list[k],init_list[k],
-                       full_rhs)
-
-        del a
-            
-    # set title
-    ct = 0
-    for k in range(len(axs)):
-        axs[k][0,0].set_title(labels[ct],loc='left')
-        ct += 1
-                              
-        axs[k][0,1].set_title(labels[ct],loc='left')
-        ct += 1
-
-    # fix title with parameter values
-    nr1,nc1 = axs[0].shape
-    for k in range(len(axs)):
-        for j in range(nc1):
-            pass
-            #ti1 = axs[k][0,j].get_title()
-            #ti1 += str(pl_list[k][0])+':'+str(pl_list[k][1])
-            #t1 += r', $\varepsilon='+str(e_list[k])+'$'
-            #ti1 += r', $\delta = '+str(d_list[k][j])+'$'
-            
-            #axs[k][0,j].set_title(ti1)
+    axs_list[0][1,0].legend()
 
     return fig
 
@@ -1515,7 +1528,13 @@ def bif1d_thal1():
     return fig
 
 
-def bif_thal2_11():
+def _setup_bif2():
+    """
+    set up bifurcation plots for coupling
+    """
+    
+
+def bif_thal2_11(NH=1024):
 
     kw_thal = copy.deepcopy(kw_thal_template)
     kw_thal['rhs'] = t2.rhs
@@ -1524,58 +1543,26 @@ def bif_thal2_11():
     kw_thal['forcing_fn'] = None
     kw_thal['coupling'] = t2.coupling
     kw_thal['trunc_order'] = 3
+    kw_thal['TN'] = 20000
     #kw_thal['save_fig'] = True
 
     pd_thal_template2 = deepcopy(pd_thal_template)
     pd_thal_template2['ib'] = 3.5
     
-    kw_thal['model_name'] = 'thal0';kw_thal['idx']=0
+    kw_thal['model_name'] = 'thal0_35';kw_thal['idx']=0
     system1 = rsp(**{'pardict':pd_thal_template2,**kw_thal})
 
-    kw_thal['model_name'] = 'thal1';kw_thal['idx']=1
+    kw_thal['model_name'] = 'thal1_35';kw_thal['idx']=1
     system2 = rsp(**{'pardict':pd_thal_template2,**kw_thal})
 
-    del_list = [0,.0005,.001,.0015]
-    eps_list = np.linspace(0,.15,200)
 
-    # (init, eps_init, eps_final, d_eps), ...
-    follow_pars = [[(3,.01,.001,-.0005),(3,.01,.31,.01),
-                    (.1,.2,.1,-.0005),  (.1,.2,.3,.01),
-                    (5,.2,.1,-.0005),  (5,.2,.3,.01)],
-                   
-                   [(3,.02,.0005,-.0005),(3,.02,.3,.01),
-                    (.5,.2,.27,.01),     (.5,.2,.08,-.005),
-                    (6,.2,.3,.01),       (6,.2,.125,-.005)],
-                   
-                   [(3,.02,.0005,-.0005),(3,.02,.3,.01),
-                    (.5,.2,.31,.01),     (.5,.2,.04,-.01),
-                    (6,.2,.3,.01),(6,.2,.14,-.01)],
-                   
-                   [(3,.02,.0005,-.0005),(3,.02,.3,.01),
-                    (.5,.05,.061,.001),(.5,.05,.035,-.002),
-                    (6,.2,.3,.01),(6,.2,.14,-.01)]
-                   ]
+    etup = (0.0,.25,1000)
+    eps_list = np.linspace(*etup)
+    del_list = [.0,.0005,.001,.0015]
 
-    data_list = []
-    obj_list = []
-
-    # get full bifurcation diagram
-    for i,dd in enumerate(del_list):
-        obj = nm.nmCoupling(system1,system2,_n=('om0',1),_m=('om1',1),
-                            NH=1000,save_fig=False,del1=dd,
-                            recompute_list=['k_thal0','k_thal1'])
-
-        branch_data = []
-        for j in range(len(follow_pars[i])):
-            e0,e1,e2,e3 = follow_pars[i][j]
-            a_full_branch = follow_phase_diffs(init=e0,eps_init=e1,eps_final=e2,
-                                               deps=e3,a=obj,del1=dd,
-                                               bifdir='bif1d_thal2/',
-                                               _full_rhs=_full)
-            branch_data.append(a_full_branch)
-
-        data_list.append(branch_data)
-        obj_list.append(obj)
+    kw1 = {'system1':system1,'system2':system2,'n':1,'m':1,'NH':NH,
+           'del_list':del_list,'bifdir_key':'thal2'}
+    data_list, data_3d_list, obj_list = load_full_bifurcation_data(**kw1)
 
         
     fig,axs=plt.subplots(1,4,figsize=(8,2),gridspec_kw={'wspace':.5})
@@ -1587,24 +1574,27 @@ def bif_thal2_11():
             label1 = '1D'
         else:
             label1 = ''
-        add_diagram_1d(axs[i],obj_list[i],del_list[i],(.001,.25,500),rhs=_redu_c,
+        add_diagram_1d(axs[i],obj_list[i],del_list[i],etup,rhs=_redu_c,
                        domain=np.linspace(-.1,2*np.pi+.1,5000),label=label1)
         
         # plot full
         for j in range(len(data_list[i])):
-            data = data_list[i][j]
-            if i == 1 and j == 0:
-                label1 = 'Full'
-            else:
-                label1 = ''
+            data1,data2 = data_list[i][j] # data1 is periods, data2 is t_diffs
 
-            if del_list[i] == 0:
-                lw=2;zorder=-10
-            else:
-                lw=1.5;zorder=-10
-                
-            kwarg = dict(color='k',zorder=zorder,label=label1,lw=lw)
-            axs[i].plot(data[:,0],np.mod(data[:,1],2*np.pi),**kwarg)
+            for k in range(obj_list[i]._m[1]+obj_list[i]._n[1]):
+                if i == 0 and j == 0 and k == 0:
+                    label1 = 'Full'
+                else:
+                    label1 = ''
+                if del_list[i] == 0:
+                    fudge = .02;lw=5;zorder=-10
+                else:
+                    fudge = 0;lw=1.5;zorder=5
+
+                kwarg = dict(color='k',zorder=zorder,label=label1,lw=lw)
+                y = 2*np.pi*data2[:,k+1]/data1[:,1]
+                axs[i].plot(data1[:,0],np.mod(y+fudge,2*np.pi),**kwarg)
+
             
         #axs[i].set_ylim(-.1,2*np.pi+.1)
         axs[i].set_ylim(-.1,2*np.pi+.1)
@@ -1657,7 +1647,7 @@ def bif_thal2_11():
     return fig
 
 
-def bif_thal2_12():
+def bif_thal2_12(NH=1024):
 
     kw_thal = copy.deepcopy(kw_thal_template)
     kw_thal['rhs'] = t2.rhs
@@ -1666,65 +1656,256 @@ def bif_thal2_12():
     kw_thal['forcing_fn'] = None
     kw_thal['coupling'] = t2.coupling
     kw_thal['trunc_order'] = 3
+    kw_thal['TN'] = 20000
     #kw_thal['save_fig'] = True
+    kw_thal['dir_root'] = 'jupyter/data'
 
     pd_thal_template2 = deepcopy(pd_thal_template)
+    pd_thal_template2['esyn'] = -1
     pd_thal_template2['ib'] = 3.5
     
-    kw_thal['model_name'] = 'thal0';kw_thal['idx']=0
+    kw_thal['model_name'] = 'thal0_35';kw_thal['idx']=0
     system1 = rsp(**{'pardict':pd_thal_template2,**kw_thal})
 
-    kw_thal['model_name'] = 'thal1';kw_thal['idx']=1
+    kw_thal['model_name'] = 'thal1_35';kw_thal['idx']=1
     system2 = rsp(**{'pardict':pd_thal_template2,**kw_thal})
 
-    del_list = [0,.01,.014,.018]
-    eps_list = np.linspace(0,.25,200)
-
-    # (init, eps_init, eps_final, d_eps), ...
-    follow_pars = [[(1,.1,.001,-.005),(1,.1,.31,.01)],
-                   
-                   [(2,.02,.001,-.005),  (2,.02,.31,.01),
-                    (0,.025,.001,-.005),(0,.025,.31,.01)],
-                   
-                   [(0,.025,.31,.01), (0,.025,.001,-.005)],
-
-                   [(0,.25,.185,-.002),  (0,.25,.31,.01)]
-                   ]
-
-    data_list = []
-    obj_list = []
+    etup = (0.0,.1,200)
+    eps_list = np.linspace(*etup)
+    del_list = [.0,.01,.014,.01752]
 
     # get full bifurcation diagram
-    recompute_list = ['p_data_thal0','p_data_thal1']
-    recompute_list += ['h_data_thal0','h_data_thal1']
-    recompute_list += ['k_thal0','k_thal1']
+    kw1 = {'system1':system1,'system2':system2,'n':1,'m':2,'NH':NH,
+           'del_list':del_list,'bifdir_key':'thal2'}
+    data_list, data_3d_list, obj_list = load_full_bifurcation_data(**kw1)
+        
+    fig = plt.figure(figsize=(8,3.5))
+    gs = GridSpec(3,4,wspace=.45,hspace=.4)
+
+    # Plot the first two rows with 4 separate axes
+    axs_top = [fig.add_subplot(gs[0:2, i]) for i in range(4)]
+    axs_bot = [fig.add_subplot(gs[2, i]) for i in range(4)]
+    axs = np.asarray([axs_top,axs_bot])
+
+    #inset for close lines
+    axins = [axs[0,1].inset_axes([.1,.23,.8,.5]),
+             axs[0,2].inset_axes([.1,.23,.8,.5]),
+             axs[0,3].inset_axes([.1,.23,.8,.5])]
+
+    for i in range(len(del_list)):
+        # plot 1d
+        if i == 0:
+            label1 = '1D'
+        else:
+            label1 = ''
+        add_diagram_1d(axs[0,i],obj_list[i],del_list[i],(.001,.1,500),rhs=_redu_c,
+                       domain=np.linspace(-.1,2*np.pi+.1,5000),label=label1,tol=.05)
+
+        if i in [1,2,3]:
+            add_diagram_1d(axins[i-1],obj_list[i],del_list[i],(.001,.1,500),
+                           rhs=_redu_c,domain=np.linspace(-.1,2*np.pi+.1,5000),
+                           label=label1,tol=.05)
+
+        # plot data
+        for j in range(len(data_list[i])):
+            #data = data_list[i][j]
+            data1,data2 = data_list[i][j] # data1 is periods, data2 is t_diffs
+            
+            for k in range(obj_list[i]._m[1]+obj_list[i]._n[1]):
+                if i == 0 and j == 0 and k == 0:
+                    label1 = 'Full'
+                else:
+                    label1 = ''
+                kwarg = dict(color='k',zorder=5,label=label1)
+                y = 2*np.pi*data2[:,k+1]/data1[:,1]
+                axs[0,i].plot(data1[:,0],np.mod(y,2*np.pi),**kwarg)
+
+                if i in [1,2,3]:
+                    axins[i-1].plot(data1[:,0],np.mod(y,2*np.pi),**kwarg)
+
+
+        axs[0,i].set_ylim(-.1,2*np.pi+.1)
+        #axs[0,i].set_ylim(-.1,np.pi+.1)
+        axs[0,i].set_yticks(np.arange(0,3,1)*np.pi)
+        axs[0,i].set_yticklabels(pi_label_short)
+
+        #axs[0,i].set_xlim(0,eps_list[-1])
+        #axs[0,i].set_xticks([])
+        #axs[0,i].set_xticklabels([])
+
+        axs[0,i].set_xlabel(r'$\varepsilon$',loc='right')
+        axs[0,i].xaxis.set_label_coords(.75,-.05)
+        axs[0,i].set_title(labels[i],loc='left')
+
+        # add parameter value
+        tt = axs[0,i].get_title()
+        tt += r'$\delta='+str(del_list[i])+'$'
+        axs[0,i].set_title(tt)
+
+        axs[0,i].set_ylabel(r'$\phi$')
+        
+    # 3d diagram
+    follow_3d = [[(1,.1,0.001,-.01)],
+                 [(.5,.1,0.001,-.01)],
+                 [(.5,.05,.11,.01),(.5,.05,0.001,-.01)],
+                 [(.5,.01,.05,.005),(.5,.01,.0009,-.001)],
+                 ]
     
-    for i,dd in enumerate(del_list):
-        obj = nm.nmCoupling(system1,system2,_n=('om0',1),_m=('om1',2),
-                            recompute_list=recompute_list,
-                            NH=1500,save_fig=False,del1=dd,
-                            )
+    for i in range(len(del_list)):
+        list_3d = []
+        
+        for j in range(len(follow_3d[i])):
+            e0,e1,e2,e3 = follow_3d[i][j]
+            _,init = phase_lock_r3d([e0,0,0],obj_list[i],e1,_redu_3dc_thal,
+                                    )
+            dat = follow_locking_3d(init,obj_list[i],(e1,e2,e3),
+                                    bifdir='bifthal2_r3d/',rhs=_redu_3dc_thal,
+                                    recompute=False)
 
-        branch_data = []
-        for j in range(len(follow_pars[i])):
-            e0,e1,e2,e3 = follow_pars[i][j]
-            a_full_branch = follow_phase_diffs(init=e0,eps_init=e1,eps_final=e2,
-                                               deps=e3,a=obj,del1=dd,
-                                               bifdir='bif1d_thal2/',
-                                               _full_rhs=_full)
-            branch_data.append(a_full_branch)
+            if i == 0 and j == 0:
+                label1 = '3D'
+            else:
+                label1 = ''
 
-        data_list.append(branch_data)
-        obj_list.append(obj)
+            if del_list[i] == 0.0:
+                fudge = .0;lw=2.5;zorder=-5
+            else:
+                fudge = 0;lw=2.5;zorder=-5
 
+            kwarg = dict(color='tab:blue',lw=lw,zorder=zorder,label=label1)
+            if i < 3:
+                axs[0,i].plot(dat[:,0],np.mod(dat[:,1]+fudge,2*np.pi),**kwarg)
+
+            if i in [1,2,3]:
+                axins[i-1].plot(dat[:,0],np.mod(dat[:,1]+fudge,2*np.pi),**kwarg)
+
+    axins[0].set_xlim(0,.1)
+    axins[1].set_xlim(0,.1)
+    axins[2].set_xlim(0,.1)
+    
+    axins[0].set_ylim(.25,.5)
+    axins[1].set_ylim(.25,.4)
+    axins[2].set_ylim(.1,.4)
+        
+    for i in range(len(axins)):
+        
+        axs[0,i+1].indicate_inset_zoom(axins[i])
+        axins[i].tick_params(labelbottom=False,labelleft=False,
+                             bottom=False,left=False)
+
+    # show ISIs:
+    ax_twins = []
+    datas_t = []
+    datas_diff = []
+    
+    for i in range(len(del_list)):
+        
+        ax_twins.append(axs[1,i].twinx())
+        
+        for j in range(len(data_list[i])):
+            data1,data2 = data_list[i][j]
+
+            if j == 0:
+                data_t = data1
+                data_diff = data2
+            else:
+                data_t = np.append(data_t,data1,axis=0)
+                data_diff = np.append(data_diff,data2,axis=0)
+
+            axs[1,i] = draw_t_diff(obj_list[i],axs[1,i],data1,o=0)
+            ax_twins[i] = draw_t_diff(obj_list[i],ax_twins[i],data1,o=1)
+
+        datas_t.append(data_t)
+        datas_diff.append(data_diff)
+
+        eps_min1 = get_min_eps(obj_list[i],data_t,o=0)
+        eps_min2 = get_min_eps(obj_list[i],data_t,o=1)
+        
+        if eps_min1 != 1 or eps_min2 != 1:
+            eps_min = min(eps_min1,eps_min2)
+            print('eps_min',eps_min)
+
+            kw_red = {'color':'tab:red','alpha':.1,'hatch':'/'}
+            kw_green = {'color':'tab:green','alpha':.1}
+
+            ax_twins[i] = draw_vertical_squiggle(ax_twins[i],eps_min)
+            axs[0,i] = draw_vertical_squiggle(axs[0,i],eps_min)
+            
+            #ax_twins[i].axvspan(0,eps_min,**kw_green)
+            #ax_twins[i].axvspan(.1,eps_min,**kw_red)
+
+            #axs[0,i].axvspan(0,eps_min,**kw_green)
+            #axs[0,i].axvspan(.1,eps_min,**kw_red)
+
+
+    plt.subplots_adjust(left=.06,right=.96,bottom=.14,top=.92)
+
+    for i in range(len(del_list)):
+        pos = axs[1,i].get_position()
+        print('pos',pos)
+        pos.x0 += .025
+        pos.x1 -= .025
+        
+        axs[1,i].set_position(pos)
+        axs[1,i].set_xlabel(r'$\varepsilon$')
+        axs[1,i].set_xlim(0,eps_list[-1])
+
+        axs[1,i].set_title(labels[i+len(del_list)],loc='left',y=.95)
+
+        axs[1,i].set_ylabel(r'Osc. 1',rotation=90)
+        ax_twins[i].set_ylabel('Osc. 2',color='gray',rotation=-90)
+
+        ax_twins[i].tick_params(axis='y',colors='gray')
+
+        # set min and max ticks only.
+        y1 = np.round(datas_t[i][:,1:1+obj_list[i]._n[1]],3)
+        axs[1,i].set_yticks([np.nanmin(y1),np.nanmax(y1)])
+        axs[1,i].yaxis.set_label_coords(-.1,.5)
+
+        y2 = np.round(datas_t[i][:,1+obj_list[i]._n[1]:],3)
+        ax_twins[i].set_yticks([np.nanmin(y2),np.nanmax(y2)])
+        ax_twins[i].yaxis.set_label_coords(1.2,.5)
+    
+    return fig
+
+
+def bif_thal2_21(NH=1024):
+
+    kw_thal = copy.deepcopy(kw_thal_template)
+    kw_thal['rhs'] = t2.rhs
+    kw_thal['var_names'] = ['v','h','r','w']
+    kw_thal['init'] = np.array([-.64,0.71,0.25,0,6.28])
+    kw_thal['forcing_fn'] = None
+    kw_thal['coupling'] = t2.coupling
+    kw_thal['trunc_order'] = 3
+    kw_thal['TN'] = 20000
+    kw_thal['dir_root'] = 'jupyter/data'
+
+    pd_thal_template2 = deepcopy(pd_thal_template)
+    pd_thal_template2['esyn'] = -1
+    pd_thal_template2['ib'] = 3.5
+    
+    kw_thal['model_name'] = 'thal0_35';kw_thal['idx']=0
+    system1 = rsp(**{'pardict':pd_thal_template2,**kw_thal})
+
+    kw_thal['model_name'] = 'thal1_35';kw_thal['idx']=1
+    system2 = rsp(**{'pardict':pd_thal_template2,**kw_thal})
+
+    etup = (0,.25,200)
+    eps_list = np.linspace(*etup)
+    del_list = [0.,.005,.008,.01]
+
+    kw1 = {'system1':system1,'system2':system2,'n':1,'m':1,'NH':NH,
+           'del_list':del_list,'bifdir_key':'thal2'}
+    data_list, data_3d_list, obj_list = load_full_bifurcation_data(**kw1)
         
     fig,axs=plt.subplots(1,4,figsize=(8,2),gridspec_kw={'wspace':.5})
     axs = axs.flatten()
 
     #inset for close lines
-    axins = [axs[1].inset_axes([.1,.23,.8,.5]),
-             axs[2].inset_axes([.1,.23,.8,.5]),
-             axs[3].inset_axes([.1,.23,.8,.5])]
+    #axins = [axs[1].inset_axes([.1,.23,.8,.5]),
+    #         axs[2].inset_axes([.1,.23,.8,.5]),
+    #         axs[3].inset_axes([.1,.23,.8,.5])]
 
     for i in range(len(del_list)):
         # plot 1d
@@ -1733,12 +1914,7 @@ def bif_thal2_12():
         else:
             label1 = ''
         add_diagram_1d(axs[i],obj_list[i],del_list[i],(.001,.25,500),rhs=_redu_c,
-                       domain=np.linspace(-.1,2*np.pi+.1,5000),label=label1)
-
-        if i in [1,2,3]:
-            add_diagram_1d(axins[i-1],obj_list[i],del_list[i],(.001,.25,500),
-                           rhs=_redu_c,domain=np.linspace(-.1,2*np.pi+.1,5000),
-                           label=label1)
+                       domain=np.linspace(-.1,2*np.pi+.1,5000),label=label1,tol=.05)
 
         # plot full
         for j in range(len(data_list[i])):
@@ -1756,8 +1932,8 @@ def bif_thal2_12():
             kwarg = dict(color='k',zorder=zorder,label=label1,lw=lw)
             axs[i].plot(data[:,0],np.mod(data[:,1],2*np.pi),**kwarg)
 
-            if i in [1,2,3]:
-                axins[i-1].plot(data[:,0],np.mod(data[:,1],2*np.pi),**kwarg)
+            #if i in [1,2,3]:
+            #    axins[i-1].plot(data[:,0],np.mod(data[:,1],2*np.pi),**kwarg)
 
             
         #axs[i].set_ylim(-.1,2*np.pi+.1)
@@ -1809,96 +1985,264 @@ def bif_thal2_12():
             if i < 3:
                 axs[i].plot(dat[:,0],np.mod(dat[:,1]+fudge,2*np.pi),**kwarg)
 
-            if i in [1,2,3]:
-                axins[i-1].plot(dat[:,0],np.mod(dat[:,1]+fudge,2*np.pi),**kwarg)
+            #if i in [1,2,3]:
+            #    axins[i-1].plot(dat[:,0],np.mod(dat[:,1]+fudge,2*np.pi),**kwarg)
 
-    axins[0].set_xlim(0,.25);axins[1].set_xlim(0,.25)
-    axins[2].set_xlim(.18,.25)
+    #axins[0].set_xlim(0,.25);axins[1].set_xlim(0,.25)
+    #axins[2].set_xlim(.15,.25)
     
-    axins[0].set_ylim(.3,.5)
-    axins[1].set_ylim(.3,.4)
-    axins[2].set_ylim(.15,.4)
+    #axins[0].set_ylim(.3,.5)
+    #axins[1].set_ylim(.3,.4)
+    #axins[2].set_ylim(.15,.4)
         
     for i in range(len(axins)):
         
         axs[i+1].indicate_inset_zoom(axins[i])
-        axins[i].tick_params(labelbottom=False,labelleft=False,
-                             bottom=False,left=False)
+        #axins[i].tick_params(labelbottom=False,labelleft=False,
+        #                     bottom=False,left=False)
 
     plt.subplots_adjust(left=.075,right=.97,bottom=.2)
     axs[0].legend()
-
-        
     
     
     return fig
 
 
-def bif1d_gt2():
+def bif_thal2_23(NH=1024):
+
     kw_thal = copy.deepcopy(kw_thal_template)
     kw_thal['rhs'] = t2.rhs
     kw_thal['var_names'] = ['v','h','r','w']
     kw_thal['init'] = np.array([-.64,0.71,0.25,0,6.28])
     kw_thal['forcing_fn'] = None
-    kw_thal['coupling'] = gt.coupling_tm
+    kw_thal['coupling'] = t2.coupling
+    kw_thal['trunc_order'] = 3
+    kw_thal['TN'] = 20000
     #kw_thal['save_fig'] = True
-    kw_thal['trunc_order'] = 2
+
+    pd_thal_template2 = deepcopy(pd_thal_template)
+    pd_thal_template2['esyn'] = -1
+    pd_thal_template2['ib'] = 3.5
     
-    kw_thal['model_name'] = 'gt0';kw_thal['idx']=0
-    system1 = rsp(**{'pardict':pd_thal_template,**kw_thal})
+    kw_thal['model_name'] = 'thal0_35';kw_thal['idx']=0
+    system1 = rsp(**{'pardict':pd_thal_template2,**kw_thal})
 
-    kw_gw = copy.deepcopy(kw_gw_template)
-    kw_gw['model_name'] = 'gt1';kw_gw['idx']=1
-    kw_gw['trunc_order'] = 3
+    kw_thal['model_name'] = 'thal1_35';kw_thal['idx']=1
+    system2 = rsp(**{'pardict':pd_thal_template2,**kw_thal})
+
+    etup = (0,.1,200)
+    eps_list = np.linspace(*etup)
+    del_list = [0.,0.003,.004,.005]
     
-    system2 = rsp(**{'pardict':pd_gw_template,**kw_gw})
+    # get full bifurcation diagram
+    kw1 = {'system1':system1,'system2':system2,'n':2,'m':3,'NH':NH,
+           'del_list':del_list,'bifdir_key':'thal2'}
+    data_list, data_3d_list, obj_list = load_full_bifurcation_data(**kw1)
+        
+    fig = plt.figure(figsize=(8,3.5))
+    gs = GridSpec(3,4,wspace=.45,hspace=.4)
+
+    # Plot the first two rows with 4 separate axes
+    axs_top = [fig.add_subplot(gs[0:2, i]) for i in range(4)]
+    axs_bot = [fig.add_subplot(gs[2, i]) for i in range(4)]
+    axs = np.asarray([axs_top,axs_bot])
     
-    fig,axs=plt.subplots(10,1,figsize=(8,15))
 
-    del_list = np.linspace(-.08,-.02,10)
-    eps_list = np.linspace(0,.1,100)
+    #inset for close lines
+    #axins = [axs[0,1].inset_axes([.1,.23,.8,.5]),
+    #         axs[0,2].inset_axes([.1,.23,.8,.5]),
+    #         axs[0,3].inset_axes([.1,.23,.8,.5])]
+
+    for i in range(len(del_list)):
+        # plot 1d
+        if i == 0:
+            label1 = '1D'
+        else:
+            label1 = ''
+        add_diagram_1d(axs[0,i],obj_list[i],del_list[i],(.001,.1,500),rhs=_redu_c,
+                       domain=np.linspace(-.1,2*np.pi+.1,5000),label=label1)
+
+        #if i in [1,2,3]:
+        #    add_diagram_1d(axins[i-1],obj_list[i],del_list[i],(.001,.1,500),
+        #                   rhs=_redu_c,domain=np.linspace(-.1,2*np.pi+.1,5000),
+        #                   label=label1)
+
+        # plot full
+        for j in range(len(data_list[i])):
+
+            data1,data2 = data_list[i][j] # data1 is periods, data2 is t_diffs
+
+            for k in range(obj_list[i]._m[1]+obj_list[i]._n[1]):
+                if i == 0 and j == 0 and k == 0:
+                    label1 = 'Full'
+                else:
+                    label1 = ''
+
+                if del_list[i] == 0:
+                    lw=3;zorder=-10
+                else:
+                    lw=3;zorder=-10
+                    
+                kwarg = dict(color='k',zorder=zorder,label=label1,lw=lw)
+                y = 2*np.pi*data2[:,k+1]/data1[:,1]
+                axs[0,i].plot(data1[:,0],np.mod(y,2*np.pi),**kwarg)
+
+                #if i in [1,2,3]:
+                #    axins[i-1].plot(data1[:,0],np.mod(data[:,1],2*np.pi),**kwarg)
+            
+        
+        axs[0,i].set_ylim(-.1,2*np.pi+.1)
+
+        #axs[0,i].set_ylim(-.1,np.pi+.1)
+        axs[0,i].set_yticks(np.arange(0,3,1)*np.pi)
+        axs[0,i].set_yticklabels(pi_label_short)
+
+        #axs[0,i].set_xlim(0,eps_list[-1])
+        #axs[0,i].set_xticks([])
+        #axs[0,i].set_xticklabels([])
+
+        axs[0,i].set_xlabel(r'$\varepsilon$',loc='right')
+        axs[0,i].xaxis.set_label_coords(.75,-.05)
+        axs[0,i].set_title(labels[i],loc='left')
+
+        # add parameter value
+        tt = axs[0,i].get_title()
+        tt += r'$\delta='+str(del_list[i])+'$'
+        axs[0,i].set_title(tt)
+
+        axs[0,i].set_ylabel(r'$\phi$')
+        
+    # 3d diagram
+    follow_3d = [[(1,.1,.31,.01),(1,.1,0.001,-.01)],
+                 [(.5,.1,.31,.01),(.5,.1,0.001,-.01)],
+                 [(.5,.05,.26,.01),(.5,.05,0.001,-.01)],
+                 [(5,.1,.12,.01),(5,.1,.12,.01)],
+                 ]
     
-    for k in range(len(del_list)):
-        n = 1;m = 1
-        a = nmc(system1,system2,
-                recompute_list=[],
-                _n=('om0',n),_m=('om1',m),
-                NP=300,NH=300)
+    for i in range(len(del_list)):
+        list_3d = []
+        
+        for j in range(len(follow_3d[i])):
+            e0,e1,e2,e3 = follow_3d[i][j]
+            _,init = phase_lock_r3d([e0,0,0],obj_list[i],e1,_redu_3dc_thal,
+                                    )
+            dat = follow_locking_3d(init,obj_list[i],(e1,e2,e3),
+                                    bifdir='jupyter/bifthal2_r3d/',rhs=_redu_3dc_thal,
+                                    recompute=False)
 
-        zu_list = []
-        zs_list = []
+            if i == 0 and j == 0:
+                label1 = '3D'
+            else:
+                label1 = ''
 
-        zu = []
-        zs = []
+            if del_list[i] == 0.0:
+                fudge = .0;lw=2.5;zorder=-5
+            else:
+                fudge = 0;lw=2.5;zorder=-5
 
-        for eps in eps_list:
-            z1,z2 = bif1d(a,eps,del_list[k])
+            kwarg = dict(color='tab:blue',lw=lw,zorder=zorder,label=label1)
+            if i < 3:
+                axs[0,i].plot(dat[:,0],np.mod(dat[:,1]+fudge,2*np.pi),**kwarg)
 
-            zu.append(z1)
-            zs.append(z2)
+            #if i in [1,2,3]:
+            #    axins[i-1].plot(dat[:,0],np.mod(dat[:,1]+fudge,2*np.pi),**kwarg)
 
-        for xe, ye in zip(eps_list, zu):
-            axs[k].scatter([xe] * len(ye), ye,s=2,c='red')
+    #axins[0].set_xlim(0,.25);axins[1].set_xlim(0,.25)
+    #axins[2].set_xlim(.18,.25)
+    
+    #axins[0].set_ylim(.3,.5)
+    #axins[1].set_ylim(.3,.4)
+    #axins[2].set_ylim(.15,.4)
+        
+    #for i in range(len(axins)):
+    #    
+    #    axs[i+1].indicate_inset_zoom(axins[i])
+    #    axins[i].tick_params(labelbottom=False,labelleft=False,
+    #                         bottom=False,left=False)
 
-        for xe, ye in zip(eps_list, zs):
-            axs[k].scatter([xe] * len(ye), ye,s=2,c='k')
 
-        """
-        for xe, ye in zip(eps_list, zu1):
-            axs.scatter([xe] * len(ye), ye,s=2,c='tab:orange')
+    # show ISIs:
+    ax_twins = []
+    datas_t = []
+    datas_diff = []
+    
+    for i in range(len(del_list)):
+        
+        ax_twins.append(axs[1,i].twinx())
+        
+        for j in range(len(data_list[i])):
+            data1,data2 = data_list[i][j]
 
-        for xe, ye in zip(eps_list, zs1):
-            axs.scatter([xe] * len(ye), ye,s=2,c='gray')
-        """
+            if j == 0:
+                data_t = data1
+                data_diff = data2
+            else:
+                data_t = np.append(data_t,data1,axis=0)
+                data_diff = np.append(data_diff,data2,axis=0)
 
-        axs[k].set_ylim(-.1,2*np.pi+.1)
+            axs[1,i] = draw_t_diff(obj_list[i],axs[1,i],data1,o=0)
+            ax_twins[i] = draw_t_diff(obj_list[i],ax_twins[i],data1,o=1)
 
+        datas_t.append(data_t)
+        datas_diff.append(data_diff)
+
+        eps_min1 = get_min_eps(obj_list[i],data_t,o=0)
+        eps_min2 = get_min_eps(obj_list[i],data_t,o=1)
+        
+        if eps_min1 != 1 or eps_min2 != 1:
+            eps_min = min(eps_min1,eps_min2)
+            print('eps_min',eps_min)
+
+            kw_red = {'color':'tab:red','alpha':.1,'hatch':'/'}
+            kw_green = {'color':'tab:green','alpha':.1}
+            
+            ax_twins[i].axvspan(0,eps_min,**kw_green)
+            ax_twins[i].axvspan(.1,eps_min,**kw_red)
+
+            axs[0,i].axvspan(0,eps_min,**kw_green)
+            axs[0,i].axvspan(.1,eps_min,**kw_red)
+
+
+    plt.subplots_adjust(left=.06,right=.96,bottom=.14,top=.92)
+
+    for i in range(len(del_list)):
+        pos = axs[1,i].get_position()
+        print('pos',pos)
+        pos.x0 += .025
+        pos.x1 -= .025
+        
+        axs[1,i].set_position(pos)
+        axs[1,i].set_xlabel(r'$\varepsilon$')
+        axs[1,i].set_xlim(0,eps_list[-1])
+
+        axs[1,i].set_title(labels[i+len(del_list)],loc='left',y=.95)
+
+        axs[1,i].set_ylabel(r'Osc. 1',rotation=90)
+        ax_twins[i].set_ylabel('Osc. 2',color='gray',rotation=-90)
+
+        ax_twins[i].tick_params(axis='y',colors='gray')
+
+        # set min and max ticks only.
+        y1 = np.round(datas_t[i][:,1:1+obj_list[i]._n[1]],3)
+        if np.isnan(np.nanmin(y1)):
+            pass
+        else:
+            axs[1,i].set_yticks([np.nanmin(y1),np.nanmax(y1)])
+            axs[1,i].yaxis.set_label_coords(-.1,.5)
+
+        y2 = np.round(datas_t[i][:,1+obj_list[i]._n[1]:],3)
+        if np.isnan(np.nanmin(y2)):
+            pass
+        else:
+            ax_twins[i].set_yticks([np.nanmin(y2),np.nanmax(y2)])
+            ax_twins[i].yaxis.set_label_coords(1.2,.5)
+
+        
     return fig
 
 
 
-
-def bif_gw2_11():
+def bif_gw2_11(NH=1024):
     """
     Bifurcations for 1:1 phase-locking in Goodwin.
     """
@@ -1907,39 +2251,16 @@ def bif_gw2_11():
     
     system1 = rsp(idx=0,model_name='gw0',**{'pardict':pd_gw_template,**kw_gw2})
     system2 = rsp(idx=1,model_name='gw1',**{'pardict':pd_gw_template,**kw_gw2})
+
+    etup = (0.001,.1,50)
+    eps_list = np.linspace(*etup)
+    del_list = [0.,.01,.03,.04]
+
+    kw1 = {'system1':system1,'system2':system2,'n':1,'m':1,'NH':NH,
+           'del_list':del_list,'bifdir_key':'gw2'}
+    data_list, data_3d_list, obj_list = load_full_bifurcation_data(**kw1)
+
     
-    kw_bif = {'method':'LSODA','dense_output':True,'rtol':1e-9,'atol':1e-9}
-    eps_list = np.linspace(0.001,.1,50)
-    del_list = [0,.01,.03,.04]
-
-    # (init, eps_init, eps_final, d_eps), ...
-    follow_pars = [[(0,.04,.11,.01),(0,.05,.001,-.002)],
-                   [(2,.05,.11,.01),(2,.05,.001,-.002)],
-                   [(2,.05,.11,.01),(2,.05,.001,-.002)],
-                   [(2,.05,.11,.01),(2,.05,.001,-.002)]
-                   ]
-    
-    data_list = []
-    obj_list = []
-
-    # get full bifurcation diagram
-    for i,dd in enumerate(del_list):
-        obj = nm.nmCoupling(system1,system2,_n=('om0',1),_m=('om1',1),
-                            NH=1000,save_fig=False,del1=dd)
-
-        branch_data = []
-        for j in range(len(follow_pars[i])):
-            e0,e1,e2,e3 = follow_pars[i][j]
-            a_full_branch = follow_phase_diffs(init=e0,eps_init=e1,eps_final=e2,
-                                               deps=e3,a=obj,del1=dd,
-                                               bifdir='bif1d_gw2/',
-                                               _full_rhs=_full)
-            branch_data.append(a_full_branch)
-
-        data_list.append(branch_data)
-        obj_list.append(obj)
-
-        
     fig,axs = plt.subplots(1,4,figsize=(8,2),gridspec_kw={'wspace':.5})
     axs = axs.flatten()
 
@@ -1954,19 +2275,22 @@ def bif_gw2_11():
 
         # plot full
         for j in range(len(data_list[i])):
-            data = data_list[i][j]
-            if i == 1 and j == 0:
-                label1 = 'Full'
-            else:
-                label1 = ''
+            data1,data2 = data_list[i][j] # data1 is periods, data2 is t_diffs
 
-            if del_list[i] == 0:
-                fudge = .02;lw=5;zorder=-10
-            else:
-                fudge = 0;lw=1.5;zorder=5
-                
-            kwarg = dict(color='k',zorder=zorder,label=label1,lw=lw)
-            axs[i].plot(data[:,0],np.mod(data[:,1]+fudge,2*np.pi),**kwarg)
+            for k in range(obj_list[i]._m[1]+obj_list[i]._n[1]):
+                if i == 0 and j == 0 and k == 0:
+                    label1 = 'Full'
+                else:
+                    label1 = ''
+                if del_list[i] == 0:
+                    fudge = .02;lw=5;zorder=-10
+                else:
+                    fudge = 0;lw=1.5;zorder=5
+
+                kwarg = dict(color='k',zorder=zorder,label=label1,lw=lw)
+                y = 2*np.pi*data2[:,k+1]/data1[:,1]
+                axs[i].plot(data1[:,0],np.mod(y+fudge,2*np.pi),**kwarg)
+            
             
         #axs[i].set_ylim(-.1,2*np.pi+.1)
         axs[i].set_ylim(-.1,2*np.pi+.1)
@@ -1986,20 +2310,11 @@ def bif_gw2_11():
         axs[i].set_ylabel(r'$\phi$')
 
 
-    # 3d diagram
-    follow_3d = [[(.1,.05,.11,.01),(.1,.05,0.001,-.002)],
-                 [(1,.05,.11,.01),(1,.05,0.001,-.002)],
-                 [(1,.05,.092,.002),(1,.05,0.001,-.002)],
-                 [(1,.03,.052,.001),(1,.03,0.001,-.002)]]
-    
+    # plot 3d diagram
     for i in range(len(del_list)):
-        list_3d = []
-        for j in range(len(follow_3d[i])):
-            e0,e1,e2,e3 = follow_3d[i][j]
-            _,init = phase_lock_r3d([e0,0,0],obj_list[i],e1,_redu_3dc_gw)
-            dat = follow_locking_3d(init,obj_list[i],(e1,e2,e3),
-                                    rhs=_redu_3dc_gw,recompute=False)
-
+        for j in range(len(data_3d_list[i])):
+            dat = data_3d_list[i][j]
+            
             if i == 1 and j == 0:
                 label1 = '3D'
             else:
@@ -2010,20 +2325,63 @@ def bif_gw2_11():
             else:
                 fudge = 0;lw=1.5;zorder=3
 
+
             kwarg = dict(color='tab:blue',lw=lw,zorder=zorder,label=label1)
             axs[i].plot(dat[:,0],np.mod(dat[:,1]+fudge,2*np.pi),**kwarg)
 
 
     plt.subplots_adjust(left=.075,right=.97,bottom=.16)
 
-    #plt.tight_layout()
-
     axs[1].legend()
     
     return fig
 
 
-def bif_gw2_12():
+def draw_t_diff(a,axs,data,o=0):
+    """o for oscillator"""
+    if o == 0:
+        color = 'k'
+        y = data[:,1:1+a._n[1]]
+        lw = 1.5
+        ls = '-'
+    else:
+        color = 'gray'
+        y = data[:,1+a._n[1]:]
+        lw = 1
+        ls = '--'
+        
+    axs.plot(data[:,0],y,color=color,lw=lw,ls=ls)
+
+    return axs
+
+def get_min_eps(a,data_t,o=0,max_diff=0.02):
+    """
+    get minimum eps for ISI to be above threshold
+    """
+
+    eps_min1 = 1; eps_min2 = 1
+
+    if o == 0 and a._n[1] > 1:
+        start_idx = 1
+        kmax = a._n[1]
+    elif o == 1 and a._m[1] > 1:
+        start_idx = 1+a._n[1]
+        kmax = a._m[1]
+    else:
+        return 1
+        
+    y1 = data_t[:,start_idx]
+
+    for k in range(1,kmax):
+        idxs = (np.abs(y1-data_t[:,start_idx+k])>max_diff)
+        
+        if np.sum(idxs) and eps_min1 > np.amin(data_t[:,0][idxs]):
+            eps_min1 = np.amin(data_t[:,0][idxs])
+
+    return eps_min1
+    
+
+def bif_gw2_12(NH=1024):
     """
     Bifurcations for 1:2 phase-locking in Goodwin.
     """
@@ -2032,8 +2390,285 @@ def bif_gw2_12():
     
     system1 = rsp(idx=0,model_name='gw0',**{'pardict':pd_gw_template,**kw_gw2})
     system2 = rsp(idx=1,model_name='gw1',**{'pardict':pd_gw_template,**kw_gw2})
+
+    etup = (0.001,.1,50)
+    eps_list = np.linspace(*etup)
+    del_list = [0.,.0003,.0005,.0007] # [0,.0003,.0005,.0007]
+
+    kw1 = {'system1':system1,'system2':system2,'n':1,'m':2,'NH':NH,
+           'del_list':del_list,'bifdir_key':'gw2'}
+    data_list, data_3d_list, obj_list = load_full_bifurcation_data(**kw1)
+
+    #fig = plt.figure(figsize=(8,3.5))
+    #gs = GridSpec(3,4,wspace=.45,hspace=.4)
+
+    # Plot the first two rows with 4 separate axes
+    #axs_top = [fig.add_subplot(gs[0:2, i]) for i in range(4)]
+    #axs_bot = [fig.add_subplot(gs[2, i]) for i in range(4)]
+    #axs = np.asarray([axs_top,axs_bot])
     
-    kw_bif = {'method':'LSODA','dense_output':True,'rtol':1e-9,'atol':1e-9}
+    fig,axs = plt.subplots(1,4,figsize=(8,2),gridspec_kw={'wspace':.5})
+    axs = axs.flatten()
+
+    for i in range(len(del_list)):
+        # plot 1d
+        if i == 0:
+            label1 = '1D'
+        else:
+            label1 = ''
+        add_diagram_1d(axs[i],obj_list[i],del_list[i],(.001,.1,1000),rhs=_redu_c,
+                       domain=np.linspace(-.1,2*np.pi+.1,5000),label=label1,
+                       tol=.1)
+
+        # plot data
+        for j in range(len(data_list[i])):
+            #data = data_list[i][j]
+            
+            data1,data2 = data_list[i][j] # data1 is periods, data2 is t_diffs
+
+            for k in range(obj_list[i]._m[1]+obj_list[i]._n[1]):
+                if i == 0 and j == 0 and k == 0:
+                    label1 = 'Full'
+                else:
+                    label1 = ''
+                kwarg = dict(color='k',zorder=5,label=label1)
+                y = 2*np.pi*data2[:,k+1]/data1[:,1]
+                axs[i].plot(data1[:,0],np.mod(y,2*np.pi),**kwarg)
+            
+        axs[i].set_ylim(-.1,2*np.pi+.1)
+        axs[i].set_yticks(np.arange(0,3,1)*np.pi)
+        axs[i].set_yticklabels(pi_label_short)
+
+        axs[i].set_xlabel(r'$\varepsilon$',loc='right')
+        axs[i].xaxis.set_label_coords(.75,-.05)
+        axs[i].set_title(labels[i],loc='left')
+
+        # add parameter value
+        tt = axs[i].get_title()
+        tt += r'$\delta='+str(del_list[i])+'$'
+        axs[i].set_title(tt)
+
+        axs[i].set_ylabel(r'$\phi$')
+
+    # get 3d diagram    
+    for i in range(len(del_list)):
+        for j in range(len(data_3d_list[i])):
+            dat = data_3d_list[i][j]
+            
+            if i == 1 and j == 0:
+                label1 = '3D'
+            else:
+                label1 = ''
+
+            if del_list[i] == 0.0:
+                fudge = .02;lw=3.5;zorder=-5
+            else:
+                fudge = 0;lw=1.5;zorder=3
+
+
+            kwarg = dict(color='tab:blue',lw=lw,zorder=zorder,label=label1)
+            axs[i].plot(dat[:,0],np.mod(dat[:,1]+fudge,2*np.pi),**kwarg)
+
+    plt.subplots_adjust(left=.075,right=.97,bottom=.16)
+            
+    axs[0].legend(handlelength=1,loc='lower left',borderpad=0.1,ncol=2,
+                  handletextpad=0.2,columnspacing=-.1,borderaxespad=.2,
+                  labelspacing=.1,frameon=True,bbox_to_anchor=(0,.2,1,1))
+
+    
+    return fig
+
+
+
+def bif_gw2_21(NH=1024):
+    """
+    Bifurcations for 2:1 phase-locking in Goodwin.
+    """
+
+    kw_gw2 = copy.deepcopy(kw_gw_template)
+    
+    system1 = rsp(idx=0,model_name='gw0',**{'pardict':pd_gw_template,**kw_gw2})
+    system2 = rsp(idx=1,model_name='gw1',**{'pardict':pd_gw_template,**kw_gw2})
+    
+    etup = (0.001,.1,50)
+    eps_list = np.linspace(*etup)
+    del_list = [0.,.0002,.0004,.002]
+
+    kw1 = {'system1':system1,'system2':system2,'n':2,'m':1,'NH':NH,
+           'del_list':del_list,'bifdir_key':'gw2'}
+    data_list, data_3d_list, obj_list = load_full_bifurcation_data(**kw1)
+
+    fig = plt.figure(figsize=(8,3.5))
+    gs = GridSpec(3,4,wspace=.45,hspace=.4)
+
+    # Plot the first two rows with 4 separate axes
+    axs_top = [fig.add_subplot(gs[0:2, i]) for i in range(4)]
+    axs_bot = [fig.add_subplot(gs[2, i]) for i in range(4)]
+    axs = np.asarray([axs_top,axs_bot])
+        
+    #fig,axs = plt.subplots(4,4,figsize=(8,4),gridspec_kw={'wspace':.5})
+    #axs = axs.flatten()
+
+    for i in range(len(del_list)):
+        # plot 1d
+        if i == 0:
+            label1 = '1D'
+        else:
+            label1 = ''
+        add_diagram_1d(axs[0,i],obj_list[i],del_list[i],(.001,.1,1000),rhs=_redu_c,
+                       domain=np.linspace(-.1,2*np.pi+.1,5000),label=label1,
+                       tol=.1)
+
+        # plot data
+        for j in range(len(data_list[i])):
+            #data = data_list[i][j]
+            print('data_list?',i,j,data_list[i])
+            
+            data1,data2 = data_list[i][j] # data1 is periods, data2 is t_diffs
+
+            for k in range(obj_list[i]._m[1]+obj_list[i]._n[1]):
+                if i == 0 and j == 0 and k == 0:
+                    label1 = 'Full'
+                else:
+                    label1 = ''
+                kwarg = dict(color='k',zorder=5,label=label1)
+                y = 2*np.pi*data2[:,k+1]/data1[:,1]
+                axs[0,i].plot(data1[:,0],np.mod(y,2*np.pi),**kwarg)
+            
+        axs[0,i].set_ylim(-.1,2*np.pi+.1)
+        #axs[0,i].set_ylim(-.1,np.pi+.1)
+        axs[0,i].set_yticks(np.arange(0,3,1)*np.pi)
+        axs[0,i].set_yticklabels(pi_label_short)
+
+        #axs[0,i].set_xlim(0,eps_list[-1])
+        #axs[0,i].set_xticks([])
+        #axs[0,i].set_xticklabels([])
+
+        axs[0,i].set_xlabel(r'$\varepsilon$',loc='right')
+        axs[0,i].xaxis.set_label_coords(.75,-.05)
+        axs[0,i].set_title(labels[i],loc='left')
+
+        # add parameter value
+        tt = axs[0,i].get_title()
+        tt += r'$\delta='+str(del_list[i])+'$'
+        axs[0,i].set_title(tt)
+
+        axs[0,i].set_ylabel(r'$\phi$')
+
+    # get 3d diagram
+    follow_3d = [[(1.5,.05,.11,.01),(1.5,.05,0.001,-.002),
+                  (4,.05,.11,.01),(4,.05,0.001,-.002)],
+                 [(1.5,.05,.11,.01),(1.5,.05,0.001,-.002),
+                  (4,.05,.11,.01),(4,.05,0.001,-.002)],
+                 [(1.5,.05,.11,.01),(1.5,.05,0.001,-.002),
+                  (4,.05,.11,.01),(4,.05,0.001,-.002)],
+                 [(1.5,.05,.11,.01),(1.5,.05,0.001,-.002),
+                  (5,.005,.009,.0005),(5,.005,.001,-.001)]]
+    
+    for i in range(len(del_list)):
+        list_3d = []
+        for j in range(len(follow_3d[i])):
+            e0,e1,e2,e3 = follow_3d[i][j]
+            _,init = phase_lock_r3d([e0,0,0],obj_list[i],e1,_redu_3dc_gw)
+            dat = follow_locking_3d(init,obj_list[i],(e1,e2,e3),
+                                    rhs=_redu_3dc_gw,recompute=False)
+
+            if i == 0 and j == 0:
+                label1 = '3D'
+            else:
+                label1 = ''
+
+            kwarg = dict(color='tab:blue',label=label1)
+            axs[0,i].plot(dat[:,0],np.mod(dat[:,1],2*np.pi),**kwarg)
+
+    axs[0,0].legend(handlelength=1,loc='lower left',borderpad=0.1,ncol=2,
+                    handletextpad=0.2,columnspacing=-.1,borderaxespad=.2,
+                    labelspacing=.1,frameon=True,bbox_to_anchor=(0,.2,1,1))
+
+    # show ISIs:
+    ax_twins = []
+    datas_t = []
+    datas_diff = []
+    
+    for i in range(len(del_list)):
+        
+        ax_twins.append(axs[1,i].twinx())
+        
+        for j in range(len(data_list[i])):
+            data1,data2 = data_list[i][j]
+
+            if j == 0:
+                data_t = data1
+                data_diff = data2
+            else:
+                data_t = np.append(data_t,data1,axis=0)
+                data_diff = np.append(data_diff,data2,axis=0)
+
+            axs[1,i] = draw_t_diff(obj_list[i],axs[1,i],data1,o=0)
+            ax_twins[i] = draw_t_diff(obj_list[i],ax_twins[i],data1,o=1)
+
+        datas_t.append(data_t)
+        datas_diff.append(data_diff)
+
+        eps_min1 = get_min_eps(obj_list[i],data_t,o=0)
+        eps_min2 = get_min_eps(obj_list[i],data_t,o=1)
+        
+        if eps_min1 != 1 or eps_min2 != 1:
+            eps_min = min(eps_min1,eps_min2)
+            print('eps_min',eps_min)
+
+            kw_red = {'color':'tab:red','alpha':.1,'hatch':'/'}
+            kw_green = {'color':'tab:green','alpha':.1}
+            
+            ax_twins[i].axvspan(0,eps_min,**kw_green)
+            ax_twins[i].axvspan(.1,eps_min,**kw_red)
+
+            axs[0,i].axvspan(0,eps_min,**kw_green)
+            axs[0,i].axvspan(.1,eps_min,**kw_red)
+
+
+    plt.subplots_adjust(left=.06,right=.96,bottom=.14,top=.92)
+
+    for i in range(len(del_list)):
+        pos = axs[1,i].get_position()
+        print('pos',pos)
+        pos.x0 += .025
+        pos.x1 -= .025
+        
+        axs[1,i].set_position(pos)
+        axs[1,i].set_xlabel(r'$\varepsilon$')
+        axs[1,i].set_xlim(0,eps_list[-1])
+
+        axs[1,i].set_title(labels[i+len(del_list)],loc='left',y=.95)
+
+        axs[1,i].set_ylabel(r'Osc. 1',rotation=90)
+        ax_twins[i].set_ylabel('Osc. 2',color='gray',rotation=-90)
+
+        ax_twins[i].tick_params(axis='y',colors='gray')
+
+        # set min and max ticks only.
+        y1 = np.round(datas_t[i][:,1:1+obj_list[i]._n[1]],3)
+        axs[1,i].set_yticks([np.nanmin(y1),np.nanmax(y1)])
+        axs[1,i].yaxis.set_label_coords(-.1,.5)
+
+        y2 = np.round(datas_t[i][:,1+obj_list[i]._n[1]:],3)
+        ax_twins[i].set_yticks([np.nanmin(y2),np.nanmax(y2)])
+        ax_twins[i].yaxis.set_label_coords(1.2,.5)
+    
+    return fig
+
+
+
+def bif_gw2_32():
+    """
+    Bifurcations for 2:1 phase-locking in Goodwin.
+    """
+
+    kw_gw2 = copy.deepcopy(kw_gw_template)
+    
+    system1 = rsp(idx=0,model_name='gw0',**{'pardict':pd_gw_template,**kw_gw2})
+    system2 = rsp(idx=1,model_name='gw1',**{'pardict':pd_gw_template,**kw_gw2})
+    
     eps_list = np.linspace(0.001,.1,50)
 
     # (init, eps_init, eps_final, d_eps), ...
@@ -2046,25 +2681,13 @@ def bif_gw2_12():
                    [(2,.02,.0005,-.005),(2,.02,.11,.005),(1,.005,.0005,-.001)]
                    ]
     
-    """
-    follow_pars = [[(0,0.08,0.04,-.0005),(0,0.061,0.0005,-.0005)],
-                   
-                   [(2,0.02,0.0005,-.0005),(2,0.02,0.1,.0005),
-                    (0,0.025,0.0005,-.0005),(0,0.025,0.1,.0005)],
-                   
-                   [(2,0.02,0.0005,-.0005),(2,0.02,0.1,.0005),
-                    (0,0.025,0.0005,-.0005)],
-                   
-                   [(2,0.02,0.0005,-.0005),(2,0.02,0.1,.0005),
-                    (1,0.005,0.0005,-.0005),(1,0.005,0.01,.0005)]]
-    """
     del_list = [0,.0003,.0005,.0007] # [0,.0003,.0005,.0007]
     data_list = []
     obj_list = []
 
     # get full bifurcation diagram
     for i,dd in enumerate(del_list):
-        obj = nm.nmCoupling(system1,system2,_n=('om0',1),_m=('om1',2),
+        obj = nm.nmCoupling(system1,system2,_n=('om0',2),_m=('om1',1),
                             NH=700,save_fig=False,del1=dd)
 
         branch_data = []
@@ -2072,7 +2695,7 @@ def bif_gw2_12():
             e0,e1,e2,e3 = follow_pars[i][j]
             a_full_branch = follow_phase_diffs(init=e0,eps_init=e1,eps_final=e2,
                                                deps=e3,a=obj,del1=dd,
-                                               bifdir='bif1d_gw2/',
+                                               bifdir='jupyter/bif1d_gw2/',
                                                _full_rhs=_full)
             branch_data.append(a_full_branch)
 
@@ -2156,7 +2779,7 @@ def bif_gw2_12():
     return fig
 
 
-def bif_gw2_23():
+def bif_gw2_23(NH=2048):
     """
     Bifurcations for 2:3 phase-locking in Goodwin.
     """
@@ -2165,72 +2788,57 @@ def bif_gw2_23():
     system1 = rsp(idx=0,model_name='gw0',**{'pardict':pd_gw_template,**kw_gw2})
     system2 = rsp(idx=1,model_name='gw1',**{'pardict':pd_gw_template,**kw_gw2})
     
-    kw_bif = {'method':'LSODA','dense_output':True,'rtol':1e-9,'atol':1e-9}
-    eps_list = np.linspace(0.001,.1,50)
+    etup = (0.001,.1,200)
+    eps_list = np.linspace(*etup)
+    del_list = [0.,.002,.0045,.0047]
 
-    # (init, eps_init, eps_final, d_eps), ...
-    follow_pars = [[(0,.01,.0775,.005),(0,.05,.001,-.005)],
-                   [(1,.05,.11,.01),(1,.05,.001,-.005)],
-                   [(0,.01,.024,.0005),(0,.01,.001,-.001)],
-                   [(0,.005,.0135,.0005),(0,.005,.0005,-.0005)]
-                   ]
+    kw1 = {'system1':system1,'system2':system2,'n':2,'m':3,'NH':NH,
+           'del_list':del_list,'bifdir_key':'gw2'}
+    data_list, data_3d_list, obj_list = load_full_bifurcation_data(**kw1)
+
+    #fig = plt.figure(figsize=(8,3.5))
+    #gs = GridSpec(3,4,wspace=.45,hspace=.4)
+
+    # Plot the first two rows with 4 separate axes
+    #axs_top = [fig.add_subplot(gs[0:2, i]) for i in range(4)]
+    #axs_bot = [fig.add_subplot(gs[2, i]) for i in range(4)]
+    #axs = np.asarray([axs_top,axs_bot])
     
-    del_list = [0,.002,.0045,.0047]
-    data_list = []
-    obj_list = []
-
-
-    # get full bifurcation diagram
-    for i,dd in enumerate(del_list):
-        obj = nm.nmCoupling(system1,system2,_n=('om0',2),_m=('om1',3),
-                            NH=1000,save_fig=False,del1=dd)
-
-        branch_data = []
-        for j in range(len(follow_pars[i])):
-            e0,e1,e2,e3 = follow_pars[i][j]
-            a_full_branch = follow_phase_diffs(init=e0,eps_init=e1,eps_final=e2,
-                                               deps=e3,a=obj,del1=dd,
-                                               bifdir='bif1d_gw2/',
-                                               _full_rhs=_full)
-            branch_data.append(a_full_branch)
-
-        data_list.append(branch_data)
-        obj_list.append(obj)    
-
     fig,axs = plt.subplots(1,4,figsize=(8,2),gridspec_kw={'wspace':.5})
     axs = axs.flatten()
 
     for i in range(len(del_list)):
         # plot 1d
-        if i == 1:
+        if i == 0:
             label1 = '1D'
         else:
             label1 = ''
-        add_diagram_1d(axs[i],obj_list[i],del_list[i],(.001,.1,1000),rhs=_redu_c,
-                       domain=np.linspace(-.1,2*np.pi+.1,5000),label=label1)
+        add_diagram_1d(axs[i],obj_list[i],del_list[i],etup,rhs=_redu_c,
+                       domain=np.linspace(-.1,2*np.pi+.1,5000),label=label1,
+                       tol=.1)
 
-        # plot full
+        # plot data
         for j in range(len(data_list[i])):
-            data = data_list[i][j]
-            if i == 1 and j == 0:
-                label1 = 'Full'
-            else:
-                label1 = ''
-                
-            kwarg = dict(color='k')
-            axs[i].plot(data[:,0],np.mod(data[:,1],2*np.pi),label=label1,
-                        **kwarg)
-            axs[i].plot(data[:,0],np.mod(data[:,2],2*np.pi),**kwarg)
-            axs[i].plot(data[:,0],np.mod(data[:,3],2*np.pi),**kwarg)
+            #data = data_list[i][j]
+            print('data_list?',i,j,data_list[i])
             
-        #axs[i].set_ylim(-.1,2*np.pi+.1)
-        axs[i].set_ylim(-.1,2*np.pi/3+.1)
-        axs[i].set_yticks(np.arange(0,3,1)*np.pi/3)
-        axs[i].set_yticklabels(pi_label_third)
+            data1,data2 = data_list[i][j] # data1 is periods, data2 is t_diffs
 
-        axs[i].set_xlim(0,eps_list[-1])
+            for k in range(obj_list[i]._m[1]+obj_list[i]._n[1]):
+                if i == 0 and j == 0 and k == 0:
+                    label1 = 'Full'
+                else:
+                    label1 = ''
+                kwarg = dict(color='k',zorder=5,label=label1)
+                y = 2*np.pi*data2[:,k+1]/data1[:,1]
+                axs[i].plot(data1[:,0],np.mod(y,2*np.pi),**kwarg)
+            
+        axs[i].set_ylim(-.1,2*np.pi+.1)
+        axs[i].set_yticks(np.arange(0,3,1)*np.pi)
+        axs[i].set_yticklabels(pi_label_short)
 
-        axs[i].set_xlabel(r'$\varepsilon$')
+        axs[i].set_xlabel(r'$\varepsilon$',loc='right')
+        axs[i].xaxis.set_label_coords(.75,-.05)
         axs[i].set_title(labels[i],loc='left')
 
         # add parameter value
@@ -2241,20 +2849,10 @@ def bif_gw2_23():
         axs[i].set_ylabel(r'$\phi$')
 
     # 3d diagram
-    follow_3d = [[(1,.05,.11,.01),(1,.05,.001,-.002)],
-                 [(1,.05,.11,.01),(1,.05,.001,-.002)],
-                 [(1,.05,.084,.002),(1,.05,.001,-.002)],
-                 [(1,.03,.052,.002),(1,.03,.001,-.002)],
-                   ]
-
     for i in range(len(del_list)):
-        list_3d = []
-        for j in range(len(follow_3d[i])):
-            e0,e1,e2,e3 = follow_3d[i][j]
-            _,init = phase_lock_r3d([e0,0,0],obj_list[i],e1,_redu_3dc_gw)
-            dat = follow_locking_3d(init,obj_list[i],(e1,e2,e3),
-                                    rhs=_redu_3dc_gw,recompute=False)
-
+        for j in range(len(data_3d_list[i])):
+            dat = data_3d_list[i][j]
+            
             if i == 1 and j == 0:
                 label1 = '3D'
             else:
@@ -2265,19 +2863,721 @@ def bif_gw2_23():
             else:
                 fudge = 0;lw=1.5;zorder=3
 
+
             kwarg = dict(color='tab:blue',lw=lw,zorder=zorder,label=label1)
             axs[i].plot(dat[:,0],np.mod(dat[:,1]+fudge,2*np.pi),**kwarg)
 
+    axs[0].legend(handlelength=1,loc='lower left',borderpad=0.1,ncol=2,
+                    handletextpad=0.2,columnspacing=-.1,borderaxespad=.2,
+                    labelspacing=.1,frameon=True,bbox_to_anchor=(0,.2,1,1))
 
-    plt.subplots_adjust(left=.075,right=.97,bottom=.16)
+    # show ISIs:
+    ax_twins = []
+    datas_t = []
+    datas_diff = []
+    
+    for i in range(len(del_list)):
+        
+        ax_twins.append(axs[1,i].twinx())
+        
+        for j in range(len(data_list[i])):
+            data1,data2 = data_list[i][j]
 
-    axs[1].legend()
+            if j == 0:
+                data_t = data1
+                data_diff = data2
+            else:
+                data_t = np.append(data_t,data1,axis=0)
+                data_diff = np.append(data_diff,data2,axis=0)
+
+            axs[1,i] = draw_t_diff(obj_list[i],axs[1,i],data1,o=0)
+            ax_twins[i] = draw_t_diff(obj_list[i],ax_twins[i],data1,o=1)
+
+        datas_t.append(data_t)
+        datas_diff.append(data_diff)
+
+        eps_min1 = get_min_eps(obj_list[i],data_t,o=0)
+        eps_min2 = get_min_eps(obj_list[i],data_t,o=1)
+        
+        if eps_min1 != 1 or eps_min2 != 1:
+            eps_min = min(eps_min1,eps_min2)
+            print('eps_min',eps_min)
+
+            kw_red = {'color':'tab:red','alpha':.1,'hatch':'/'}
+            kw_green = {'color':'tab:green','alpha':.1}
+            
+            ax_twins[i].axvspan(0,eps_min,**kw_green)
+            ax_twins[i].axvspan(.1,eps_min,**kw_red)
+
+            axs[0,i].axvspan(0,eps_min,**kw_green)
+            axs[0,i].axvspan(.1,eps_min,**kw_red)
+
+
+    plt.subplots_adjust(left=.06,right=.96,bottom=.14,top=.92)
+
+    for i in range(len(del_list)):
+        pos = axs[1,i].get_position()
+        print('pos',pos)
+        pos.x0 += .025
+        pos.x1 -= .025
+        
+        axs[1,i].set_position(pos)
+        axs[1,i].set_xlabel(r'$\varepsilon$')
+        axs[1,i].set_xlim(0,eps_list[-1])
+
+        axs[1,i].set_title(labels[i+len(del_list)],loc='left',y=.95)
+
+        axs[1,i].set_ylabel(r'Osc. 1',rotation=90)
+        ax_twins[i].set_ylabel('Osc. 2',color='gray',rotation=-90)
+
+        ax_twins[i].tick_params(axis='y',colors='gray')
+
+        # set min and max ticks only.
+        y1 = np.round(datas_t[i][:,1:1+obj_list[i]._n[1]],3)
+        axs[1,i].set_yticks([np.nanmin(y1),np.nanmax(y1)])
+        axs[1,i].yaxis.set_label_coords(-.1,.5)
+
+        y2 = np.round(datas_t[i][:,1+obj_list[i]._n[1]:],3)
+        ax_twins[i].set_yticks([np.nanmin(y2),np.nanmax(y2)])
+        ax_twins[i].yaxis.set_label_coords(1.2,.5)
+
+    
+    return fig
+
+
+def load_full_bifurcation_data(system1,system2,n,m,del_list,NH,bifdir_key=''):
+    #assert(len(del_list) == 4)
+    
+    
+    k = bifdir_key
+    fnames = []
+    fnames_3d = []
+    # load hyperparameters that point to bifurcation data
+    for i,dd in enumerate(del_list):
+        fname = 'jupyter/bif1d_{}/hyper_{}_{}{}_p{}.txt'
+        fname_3d = 'jupyter/bif1d_{}/hyper_r3d_{}_{}{}_p{}.txt'
+        
+        fnames.append(fname.format(k,k,n,m,str(dd)[2:]))
+        fnames_3d.append(fname_3d.format(k,k,n,m,str(dd)[2:]))
+        print('fname hyp.', fname.format(k,k,n,m,str(dd)[2:]))
+        print('fname hyp. r3d', fname.format(k,k,n,m,str(dd)[2:]))
+    
+    # get full bifurcation diagram
+    #recompute_list = ['p_data_thal0','p_data_thal1']
+    #recompute_list += ['k_thal0','k_thal1']
+    #recompute_list += ['p_thal0','p_thal1']
+    #recompute_list += ['h_thal0','h_thal1']
+    #recompute_list += ['h_data_thal0','h_data_thal1']
+
+    data_list = []
+    data_3d_list = []
+    obj_list = []
+    
+    for i,dd in enumerate(del_list):
+        if int(dd) == dd:
+            dd = int(dd)
+        obj = nm.nmCoupling(system1,system2,_n=('om0',n),_m=('om1',m),
+                            NH=NH,save_fig=False,del1=dd)
+        obj_list.append(obj)
+
+        follow_pars = np.loadtxt(fnames[i])
+        branch_data = []
+        for j in range(len(follow_pars)):
+            e0,e1,e2,e3 = follow_pars[j]
+            if int(e0)-e0 == 0:
+                e0 = int(e0)
+            a_full_branch = follow_phase_diffs(init=e0,eps_init=e1,eps_final=e2,
+                                               deps=e3,a=obj,del1=dd,
+                                               bifdir='jupyter/bif1d_'+bifdir_key+'/',
+                                               _full_rhs=_full)
+            branch_data.append(a_full_branch)
+        data_list.append(branch_data)
+
+        follow_3d = np.loadtxt(fnames_3d[i])
+        print(follow_3d,fnames_3d[i])
+        branch_3d_data = []
+        for j in range(len(follow_3d)):
+            e0,e1,e2,e3 = follow_3d[j]
+            print('follow3d',i,j,follow_3d[j])
+            if int(e0)-e0 == 0:
+                e0 = int(e0)
+
+            dat_3d = follow_locking_3d(e0,obj_list[i],(e1,e2,e3),rhs=_redu_3dc,
+                                       bifdir='jupyter/bif1d_'+bifdir_key+'/',)
+
+            branch_3d_data.append(dat_3d)
+        data_3d_list.append(branch_3d_data)
+        
+
+    return data_list, data_3d_list, obj_list
+
+
+def bif_gwt_11(NH=1024):
+    """
+    Bifurcations for 1:1 phase-locking in thalamic-goodwin
+    """
+    
+    kw_thal = copy.deepcopy(kw_thal_template)
+    kw_thal['rhs'] = t2.rhs
+    kw_thal['var_names'] = ['v','h','r','w']
+    kw_thal['init'] = np.array([-.64,0.71,0.25,0,6.28])
+    kw_thal['forcing_fn'] = None
+    kw_thal['coupling'] = gwt.coupling_thal
+    kw_thal['trunc_order'] = 3
+    kw_thal['TN'] = 20000
+    #kw_thal['save_fig'] = True
+    del kw_thal['idx']
+    del kw_thal['model_name']
+
+    pd_thal = deepcopy(pd_thal_template)
+    pd_thal['esyn'] = -90
+
+    kw_gw = copy.deepcopy(kw_gw_template)
+    kw_gw['coupling'] = gwt.coupling_gw
+    kw_gw['forcing_fn'] = None
+    kw_gw['TN'] = 20000
+    kw_gw['trunc_order'] = 3
+    
+    pd_gw = pd_gw_template
+    
+    system1 = rsp(idx=0,model_name='gwt0',**{'pardict':pd_thal,**kw_thal})
+    system2 = rsp(idx=1,model_name='gwt1',**{'pardict':pd_gw,**kw_gw})
+    
+    etup = (0.001,.1,100)
+    eps_list = np.linspace(*etup)
+    del_list = [.0,.04,.1,.15]
+
+    kw1 = {'system1':system1,'system2':system2,'n':1,'m':1,'NH':NH,
+           'del_list':del_list,'bifdir_key':'gwt'}
+    data_list, data_3d_list, obj_list = load_full_bifurcation_data(**kw1)
+
+    fig = plt.figure(figsize=(8,3.5))
+    gs = GridSpec(3,4,wspace=.45,hspace=.4)
+
+    # Plot the first two rows with 4 separate axes
+    axs_top = [fig.add_subplot(gs[0:2, i]) for i in range(4)]
+    axs_bot = [fig.add_subplot(gs[2, i]) for i in range(4)]
+    axs = np.asarray([axs_top,axs_bot])
+
+    for i in range(len(del_list)):
+        # plot 1d
+        if i == 0:
+            label1 = '1D'
+        else:
+            label1 = ''
+        add_diagram_1d(axs[0,i],obj_list[i],del_list[i],etup,rhs=_redu_c,
+                       domain=np.linspace(-.1,2*np.pi+.1,5000),label=label1,
+                       tol=.1)
+
+        # plot data
+        for j in range(len(data_list[i])):
+            #data = data_list[i][j]
+            print('data_list?',i,j,data_list[i])
+            
+            data1,data2 = data_list[i][j] # data1 is periods, data2 is t_diffs
+
+            for k in range(obj_list[i]._m[1]+obj_list[i]._n[1]):
+                if i == 0 and j == 0 and k == 0:
+                    label1 = 'Full'
+                else:
+                    label1 = ''
+                kwarg = dict(color='k',zorder=5,label=label1)
+                y = 2*np.pi*data2[:,k+1]/data1[:,1]
+                axs[0,i].plot(data1[:,0],np.mod(y,2*np.pi),**kwarg)
+            
+        axs[0,i].set_ylim(-.1,2*np.pi+.1)
+        #axs[0,i].set_ylim(-.1,np.pi+.1)
+        axs[0,i].set_yticks(np.arange(0,3,1)*np.pi)
+        axs[0,i].set_yticklabels(pi_label_short)
+
+        axs[0,i].set_xlabel(r'$\varepsilon$',loc='right')
+        axs[0,i].xaxis.set_label_coords(.75,-.05)
+        axs[0,i].set_title(labels[i],loc='left')
+
+        # add parameter value
+        tt = axs[0,i].get_title()
+        tt += r'$\delta='+str(del_list[i])+'$'
+        axs[0,i].set_title(tt)
+
+        axs[0,i].set_ylabel(r'$\phi$')
+
+    # get 3d diagram
+    
+    follow_3d = [[(1.5,.05,.1,.002),(1.5,.05,0.001,-.002)],
+                 [(1.5,.05,.1,.002),(1.5,.05,0.001,-.002)],
+                 [(1.5,.05,.1,.002),(1.5,.05,0.001,-.002)],
+                 [(1.5,.05,.1,.002),(1.5,.05,0.001,-.002),
+                  (.8,.005,.009,.0005),(.8,.005,.001,-.001)]]
+    
+    for i in range(len(del_list)):
+        list_3d = []
+        for j in range(len(follow_3d[i])):
+            e0,e1,e2,e3 = follow_3d[i][j]
+            _,init = phase_lock_r3d([e0,0,0],obj_list[i],e1,_redu_3dc)
+            dat = follow_locking_3d(init,obj_list[i],(e1,e2,e3),
+                                    rhs=_redu_3dc,recompute=False)
+
+            if i == 0 and j == 0:
+                label1 = '3D'
+            else:
+                label1 = ''
+
+            kwarg = dict(color='tab:blue',label=label1)
+            axs[0,i].plot(dat[:,0],np.mod(dat[:,1],2*np.pi),**kwarg)
+
+    axs[0,0].legend(handlelength=1,loc='center left',borderpad=0.1,ncol=2,
+                    handletextpad=0.2,columnspacing=-.1,borderaxespad=.2,
+                    labelspacing=.1,frameon=False)
+
+    # show ISIs:
+    ax_twins = []
+    datas_t = []
+    datas_diff = []
+    
+    for i in range(len(del_list)):        
+        ax_twins.append(axs[1,i].twinx())
+        
+        for j in range(len(data_list[i])):
+            data1,data2 = data_list[i][j]
+
+            if j == 0:
+                data_t = data1
+                data_diff = data2
+            else:
+                data_t = np.append(data_t,data1,axis=0)
+                data_diff = np.append(data_diff,data2,axis=0)
+
+            axs[1,i] = draw_t_diff(obj_list[i],axs[1,i],data1,o=0)
+            ax_twins[i] = draw_t_diff(obj_list[i],ax_twins[i],data1,o=1)
+
+        datas_t.append(data_t)
+        datas_diff.append(data_diff)
+
+        eps_min1 = get_min_eps(obj_list[i],data_t,o=0)
+        eps_min2 = get_min_eps(obj_list[i],data_t,o=1)
+        
+        if eps_min1 != 1 or eps_min2 != 1:
+            eps_min = min(eps_min1,eps_min2)
+            print('eps_min',eps_min)
+
+            kw_red = {'color':'tab:red','alpha':.1,'hatch':'/'}
+            kw_green = {'color':'tab:green','alpha':.1}
+            
+            ax_twins[i].axvspan(0,eps_min,**kw_green)
+            ax_twins[i].axvspan(.1,eps_min,**kw_red)
+
+            axs[0,i].axvspan(0,eps_min,**kw_green)
+            axs[0,i].axvspan(.1,eps_min,**kw_red)
+
+
+    plt.subplots_adjust(left=.06,right=.96,bottom=.14,top=.92)
+
+    for i in range(len(del_list)):
+        pos = axs[1,i].get_position()
+        print('pos',pos)
+        pos.x0 += .025
+        pos.x1 -= .025
+        
+        axs[1,i].set_position(pos)
+        axs[1,i].set_xlabel(r'$\varepsilon$')
+        axs[1,i].set_xlim(0,eps_list[-1])
+
+        axs[1,i].set_title(labels[i+len(del_list)],loc='left',y=.95)
+
+        axs[1,i].set_ylabel(r'Osc. 1',rotation=90)
+        ax_twins[i].set_ylabel('Osc. 2',color='gray',rotation=-90)
+
+        ax_twins[i].tick_params(axis='y',colors='gray')
+
+        # set min and max ticks only.
+        y1 = np.round(datas_t[i][:,1:1+obj_list[i]._n[1]],3)
+        axs[1,i].set_yticks([np.nanmin(y1),np.nanmax(y1)])
+        axs[1,i].yaxis.set_label_coords(-.1,.5)
+
+        y2 = np.round(datas_t[i][:,1+obj_list[i]._n[1]:],3)
+        ax_twins[i].set_yticks([np.nanmin(y2),np.nanmax(y2)])
+        ax_twins[i].yaxis.set_label_coords(1.2,.5)
+
+    
+    return fig
+
+
+def bif_gwt_12(NH=1024):
+    """
+    Bifurcations for 1:1 phase-locking in thalamic-goodwin
+    """
+    
+    kw_thal = copy.deepcopy(kw_thal_template)
+    kw_thal['rhs'] = t2.rhs
+    kw_thal['var_names'] = ['v','h','r','w']
+    kw_thal['init'] = np.array([-.64,0.71,0.25,0,6.28])
+    kw_thal['forcing_fn'] = None
+    kw_thal['coupling'] = gwt.coupling_thal
+    kw_thal['trunc_order'] = 3
+    kw_thal['TN'] = 20000
+    #kw_thal['save_fig'] = True
+    del kw_thal['idx']
+    del kw_thal['model_name']
+
+    pd_thal = deepcopy(pd_thal_template)
+    pd_thal['esyn'] = -90
+
+    kw_gw = copy.deepcopy(kw_gw_template)
+    kw_gw['coupling'] = gwt.coupling_gw
+    kw_gw['forcing_fn'] = None
+    kw_gw['TN'] = 20000
+    kw_gw['trunc_order'] = 3
+    
+    pd_gw = pd_gw_template
+    
+    system1 = rsp(idx=0,model_name='gwt0',**{'pardict':pd_thal,**kw_thal})
+    system2 = rsp(idx=1,model_name='gwt1',**{'pardict':pd_gw,**kw_gw})
+
+    etup = (0.001,.1,100)
+    eps_list = np.linspace(*etup)
+    del_list = [.0,.06,.1,.12]
+
+    kw1 = {'system1':system1,'system2':system2,'n':1,'m':2,'NH':NH,
+           'del_list':del_list,'bifdir_key':'gwt'}
+    data_list, data_3d_list, obj_list = load_full_bifurcation_data(**kw1)
+
+    fig = plt.figure(figsize=(8,3.5))
+    gs = GridSpec(3,4,wspace=.45,hspace=.4)
+
+    # Plot the first two rows with 4 separate axes
+    axs_top = [fig.add_subplot(gs[0:2, i]) for i in range(4)]
+    axs_bot = [fig.add_subplot(gs[2, i]) for i in range(4)]
+    axs = np.asarray([axs_top,axs_bot])
+
+    for i in range(len(del_list)):
+        # plot 1d
+        if i == 0:
+            label1 = '1D'
+        else:
+            label1 = ''
+        add_diagram_1d(axs[0,i],obj_list[i],del_list[i],(.001,.1,1000),rhs=_redu_c,
+                       domain=np.linspace(-.1,2*np.pi+.1,5000),label=label1,
+                       tol=.1)
+
+        # plot data
+        for j in range(len(data_list[i])):            
+            data1,data2 = data_list[i][j] # data1 is periods, data2 is t_diffs
+
+            for k in range(obj_list[i]._m[1]+obj_list[i]._n[1]):
+                if i == 0 and j == 0 and k == 0:
+                    label1 = 'Full'
+                else:
+                    label1 = ''
+                kwarg = dict(color='k',zorder=-1,label=label1)
+                y = 2*np.pi*data2[:,k+1]/data1[:,1]
+                axs[0,i].plot(data1[:,0],np.mod(y,2*np.pi),**kwarg)
+            
+        axs[0,i].set_ylim(-.1,2*np.pi+.1)
+        #axs[0,i].set_ylim(-.1,np.pi+.1)
+        axs[0,i].set_yticks(np.arange(0,3,1)*np.pi)
+        axs[0,i].set_yticklabels(pi_label_short)
+
+        axs[0,i].set_xlabel(r'$\varepsilon$',loc='right')
+        axs[0,i].xaxis.set_label_coords(.75,-.05)
+        axs[0,i].set_title(labels[i],loc='left')
+
+        # add parameter value
+        tt = axs[0,i].get_title()
+        tt += r'$\delta='+str(del_list[i])+'$'
+        axs[0,i].set_title(tt)
+        axs[0,i].set_ylabel(r'$\phi$')
+
+    # plot 3d diagram
+    for i in range(len(del_list)):
+        for j in range(len(data_3d_list[i])):
+            dat = data_3d_list[i][j]
+
+            if i == 0 and j == 0:
+                label1 = '3D'
+            else:
+                label1 = ''
+
+            kwarg = dict(color='tab:blue',label=label1,zorder=5)
+            axs[0,i].plot(dat[:,0],np.mod(dat[:,1],2*np.pi),**kwarg)
+
+    axs[0,0].legend(handlelength=1,loc='center left',borderpad=0.1,ncol=2,
+                    handletextpad=0.2,columnspacing=-.1,borderaxespad=.2,
+                    labelspacing=.1,frameon=False)
+
+    # show ISIs:
+    ax_twins = []
+    datas_t = []
+    datas_diff = []
+    
+    for i in range(len(del_list)):        
+        ax_twins.append(axs[1,i].twinx())
+        
+        for j in range(len(data_list[i])):
+            data1,data2 = data_list[i][j]
+
+            if j == 0:
+                data_t = data1
+                data_diff = data2
+            else:
+                data_t = np.append(data_t,data1,axis=0)
+                data_diff = np.append(data_diff,data2,axis=0)
+
+            axs[1,i] = draw_t_diff(obj_list[i],axs[1,i],data1,o=0)
+            ax_twins[i] = draw_t_diff(obj_list[i],ax_twins[i],data1,o=1)
+
+        datas_t.append(data_t)
+        datas_diff.append(data_diff)
+
+        eps_min1 = get_min_eps(obj_list[i],data_t,o=0)
+        eps_min2 = get_min_eps(obj_list[i],data_t,o=1)
+        
+        if eps_min1 != 1 or eps_min2 != 1:
+            eps_min = min(eps_min1,eps_min2)
+            print('eps_min',eps_min)
+
+            #kw_red = {'color':'tab:red','alpha':.1,'hatch':'/'}
+            #kw_green = {'color':'tab:green','alpha':.1}
+
+            #ax_twins[i] = draw_vertical_squiggle(ax_twins[i],eps_min)
+            #axs[0,i] = draw_vertical_squiggle(axs[0,i],eps_min)
+            
+            #ax_twins[i].axvspan(0,eps_min,**kw_green)
+            #ax_twins[i].axvspan(.1,eps_min,**kw_red)
+
+            ax_twins[i].axvline(eps_min,ls=':',color='k')
+            axs[0,i].axvline(eps_min,ls=':',color='k')
+
+            #axs[0,i].axvspan(0,eps_min,**kw_green)
+            #axs[0,i].axvspan(.1,eps_min,**kw_red)
+
+
+    plt.subplots_adjust(left=.06,right=.96,bottom=.14,top=.92)
+
+    for i in range(len(del_list)):
+        pos = axs[1,i].get_position()
+        print('pos',pos)
+        pos.x0 += .025
+        pos.x1 -= .025
+        
+        axs[1,i].set_position(pos)
+        axs[1,i].set_xlabel(r'$\varepsilon$')
+        axs[1,i].set_xlim(0,eps_list[-1])
+
+        axs[1,i].set_title(labels[i+len(del_list)],loc='left',y=.95)
+
+        axs[1,i].set_ylabel(r'Osc. 1',rotation=90)
+        ax_twins[i].set_ylabel('Osc. 2',color='gray',rotation=-90)
+
+        ax_twins[i].tick_params(axis='y',colors='gray')
+
+        # set min and max ticks only.
+        y1 = np.round(datas_t[i][:,1:1+obj_list[i]._n[1]],3)
+        axs[1,i].set_yticks([np.nanmin(y1),np.nanmax(y1)])
+        axs[1,i].yaxis.set_label_coords(-.1,.5)
+
+        y2 = np.round(datas_t[i][:,1+obj_list[i]._n[1]:],3)
+        ax_twins[i].set_yticks([np.nanmin(y2),np.nanmax(y2)])
+        ax_twins[i].yaxis.set_label_coords(1.2,.5)
+
+    
+    return fig
+
+
+def bif_gwt_23(NH=1024):
+    """
+    Bifurcations for 2:3 phase-locking in thalamic-goodwin
+    """
+    
+    kw_thal = copy.deepcopy(kw_thal_template)
+    kw_thal['rhs'] = t2.rhs
+    kw_thal['var_names'] = ['v','h','r','w']
+    kw_thal['init'] = np.array([-.64,0.71,0.25,0,6.28])
+    kw_thal['forcing_fn'] = None
+    kw_thal['coupling'] = gwt.coupling_thal
+    kw_thal['trunc_order'] = 3
+    kw_thal['TN'] = 20000
+    #kw_thal['save_fig'] = True
+    del kw_thal['idx']
+    del kw_thal['model_name']
+
+    pd_thal = deepcopy(pd_thal_template)
+    pd_thal['esyn'] = -90
+
+    kw_gw = copy.deepcopy(kw_gw_template)
+    kw_gw['coupling'] = gwt.coupling_gw
+    kw_gw['forcing_fn'] = None
+    kw_gw['TN'] = 20000
+    kw_gw['trunc_order'] = 3
+    
+    pd_gw = pd_gw_template
+    
+    system1 = rsp(idx=0,model_name='gwt0',**{'pardict':pd_thal,**kw_thal})
+    system2 = rsp(idx=1,model_name='gwt1',**{'pardict':pd_gw,**kw_gw})
+    
+    etup = (0.001,.1,100)
+    eps_list = np.linspace(*etup)
+    del_list = [.0,.01,.02,.04]
+
+    kw1 = {'system1':system1,'system2':system2,'n':2,'m':3,'NH':NH,
+           'del_list':del_list,'bifdir_key':'gwt'}
+    data_list, data_3d_list, obj_list = load_full_bifurcation_data(**kw1)
+
+    fig = plt.figure(figsize=(8,3.5))
+    gs = GridSpec(3,4,wspace=.45,hspace=.4)
+
+    # Plot the first two rows with 4 separate axes
+    axs_top = [fig.add_subplot(gs[0:2, i]) for i in range(4)]
+    axs_bot = [fig.add_subplot(gs[2, i]) for i in range(4)]
+    axs = np.asarray([axs_top,axs_bot])
+
+    for i in range(len(del_list)):
+        # plot 1d
+        if i == 0:
+            label1 = '1D'
+        else:
+            label1 = ''
+        add_diagram_1d(axs[0,i],obj_list[i],del_list[i],etup,rhs=_redu_c,
+                       domain=np.linspace(-.1,2*np.pi+.1,5000),label=label1,
+                       tol=.1)
+
+        # plot data
+        for j in range(len(data_list[i])):
+            #data = data_list[i][j]
+            print('data_list?',i,j,data_list[i])
+            
+            data1,data2 = data_list[i][j] # data1 is periods, data2 is t_diffs
+
+            for k in range(obj_list[i]._m[1]+obj_list[i]._n[1]):
+                if i == 0 and j == 0 and k == 0:
+                    label1 = 'Full'
+                else:
+                    label1 = ''
+                kwarg = dict(color='k',zorder=5,label=label1)
+                y = 2*np.pi*data2[:,k+1]/data1[:,1]
+                axs[0,i].plot(data1[:,0],np.mod(y,2*np.pi),**kwarg)
+            
+        axs[0,i].set_ylim(-.1,2*np.pi+.1)
+        #axs[0,i].set_ylim(-.1,np.pi+.1)
+        axs[0,i].set_yticks(np.arange(0,3,1)*np.pi)
+        axs[0,i].set_yticklabels(pi_label_short)
+
+        axs[0,i].set_xlabel(r'$\varepsilon$',loc='right')
+        axs[0,i].xaxis.set_label_coords(.75,-.05)
+        axs[0,i].set_title(labels[i],loc='left')
+
+        # add parameter value
+        tt = axs[0,i].get_title()
+        tt += r'$\delta='+str(del_list[i])+'$'
+        axs[0,i].set_title(tt)
+
+        axs[0,i].set_ylabel(r'$\phi$')
+
+    # get 3d diagram
+    
+    follow_3d = [[(1.5,.05,.1,.002),(1.5,.05,0.001,-.002)],
+                 [(1.5,.05,.1,.002),(1.5,.05,0.001,-.002)],
+                 [(1.5,.05,.1,.002),(1.5,.05,0.001,-.002)],
+                 [(1.5,.05,.1,.002),(1.5,.05,0.001,-.002),
+                  (.8,.005,.009,.0005),(.8,.005,.001,-.001)]]
+    
+    for i in range(len(del_list)):
+        list_3d = []
+        for j in range(len(follow_3d[i])):
+            e0,e1,e2,e3 = follow_3d[i][j]
+            _,init = phase_lock_r3d([e0,0,0],obj_list[i],e1,_redu_3dc)
+            dat = follow_locking_3d(init,obj_list[i],(e1,e2,e3),
+                                    rhs=_redu_3dc,recompute=False)
+
+            if i == 0 and j == 0:
+                label1 = '3D'
+            else:
+                label1 = ''
+
+            kwarg = dict(color='tab:blue',label=label1)
+            axs[0,i].plot(dat[:,0],np.mod(dat[:,1],2*np.pi),**kwarg)
+
+    axs[0,0].legend(handlelength=1,loc='center left',borderpad=0.1,ncol=2,
+                    handletextpad=0.2,columnspacing=-.1,borderaxespad=.2,
+                    labelspacing=.1,frameon=False)
+
+    # show ISIs:
+    ax_twins = []
+    datas_t = []
+    datas_diff = []
+    
+    for i in range(len(del_list)):        
+        ax_twins.append(axs[1,i].twinx())
+        
+        for j in range(len(data_list[i])):
+            data1,data2 = data_list[i][j]
+
+            if j == 0:
+                data_t = data1
+                data_diff = data2
+            else:
+                data_t = np.append(data_t,data1,axis=0)
+                data_diff = np.append(data_diff,data2,axis=0)
+
+            axs[1,i] = draw_t_diff(obj_list[i],axs[1,i],data1,o=0)
+            ax_twins[i] = draw_t_diff(obj_list[i],ax_twins[i],data1,o=1)
+
+        datas_t.append(data_t)
+        datas_diff.append(data_diff)
+
+        eps_min1 = get_min_eps(obj_list[i],data_t,o=0)
+        eps_min2 = get_min_eps(obj_list[i],data_t,o=1)
+        
+        if eps_min1 != 1 or eps_min2 != 1:
+            eps_min = min(eps_min1,eps_min2)
+            print('eps_min',eps_min)
+
+            ax_twins[i].axvline(eps_min,ls=':',color='k')
+            axs[0,i].axvline(eps_min,ls=':',color='k')
+            
+            #kw_red = {'color':'tab:red','alpha':.1,'hatch':'/'}
+            #kw_green = {'color':'tab:green','alpha':.1}
+            
+            #ax_twins[i].axvspan(0,eps_min,**kw_green)
+            #ax_twins[i].axvspan(.1,eps_min,**kw_red)
+
+            #axs[0,i].axvspan(0,eps_min,**kw_green)
+            #axs[0,i].axvspan(.1,eps_min,**kw_red)
+
+
+    plt.subplots_adjust(left=.06,right=.96,bottom=.14,top=.92)
+
+    for i in range(len(del_list)):
+        pos = axs[1,i].get_position()
+        print('pos',pos)
+        pos.x0 += .025
+        pos.x1 -= .025
+        
+        axs[1,i].set_position(pos)
+        axs[1,i].set_xlabel(r'$\varepsilon$')
+        axs[1,i].set_xlim(0,eps_list[-1])
+
+        axs[1,i].set_title(labels[i+len(del_list)],loc='left',y=.95)
+
+        axs[1,i].set_ylabel(r'Osc. 1',rotation=90)
+        ax_twins[i].set_ylabel('Osc. 2',color='gray',rotation=-90)
+
+        ax_twins[i].tick_params(axis='y',colors='gray')
+
+        # set min and max ticks only.
+        y1 = np.round(datas_t[i][:,1:1+obj_list[i]._n[1]],3)
+        axs[1,i].set_yticks([np.nanmin(y1),np.nanmax(y1)])
+        axs[1,i].yaxis.set_label_coords(-.1,.5)
+
+        y2 = np.round(datas_t[i][:,1+obj_list[i]._n[1]:],3)
+        ax_twins[i].set_yticks([np.nanmin(y2),np.nanmax(y2)])
+        ax_twins[i].yaxis.set_label_coords(1.2,.5)
+
     
     return fig
 
 
 
-def generate_figure(function, args, filenames, dpi=100):
+def generate_figure(function, args, filenames, dpi=200):
     # workaround for python bug where forked processes use the same random 
     # filename.
     #tempfile._name_sequence = None;
@@ -2300,57 +3600,42 @@ def main():
     
     # listed in order of Figures in paper
     figures = [
+        #(forcing_fn,[],['figs/f_forcing.pdf']),
 
+        #(traj_cgl1,[],['figs/f_traj_cgl1.pdf','figs/f_traj_cgl1.png']),
+        #(traj_thal1,[],['figs/f_traj_thal1.pdf','figs/f_traj_thal1.png']),
         
-
-        #(forcing_fn,[],['figs/f_forcing.pdf'],200),
+        #(fr_cgl,[],['figs/f_fr_cgl.pdf','figs/f_fr_cgl.png']),
+        #(fr_thal,[],['figs/f_fr_thal.pdf','figs/f_fr_thal.png']),
         
-        #(trajectories_cgl1,[],['figs/f_traj_cgl1.pdf',
-        #                      'figs/f_traj_cgl1.png'],200),
-        
-
-        #(trajectories_thal1,[],['figs/f_traj_thal1.pdf',
-        #                       'figs/f_traj_thal1.png'],200),
-
-        #(trajectories_gw2,[],['figs/f_traj_gw2.pdf',
-        #                      'figs/f_traj_gw2.png'],200),
-        
-        #(trajectories_thal2,[],['figs/f_traj_thal2.pdf',
-        #                       'figs/f_traj_thal2.png'],200),
-
-        #(trajectories_thal2b,[],['figs/f_traj_thal2b.pdf',
-        #                        'figs/f_traj_thal2b.png'],200),
-
-        #(trajectories_gt2,[],['figs/f_traj_gt2.pdf',
-        #                       'figs/f_traj_gt2.png'],200),
-                              
-        #(fr_cgl,[],['figs/f_fr_cgl.pdf',
-        #            'figs/f_fr_cgl.png'],200),
-
-        #(fr_thal,[],['figs/f_fr_thal.pdf',
-        #             'figs/f_fr_thal.png'],200),
-        
-        #(tongues_cgl,[],['figs/f_tongues_cgl.pdf',
-        #                 'figs/f_tongues_cgl.png'],200),
-
-        
-        #(tongues_thal,[],['figs/f_tongues_thal.pdf',
-        #                  'figs/f_tongues_thal.png'],200),
-
+        #(tongues_cgl,[],['figs/f_tongues_cgl.pdf','figs/f_tongues_cgl.png']),
+        #(tongues_thal,[],['figs/f_tongues_thal.pdf','figs/f_tongues_thal.png']),
 
         #(bif1d_cgl1,[],['figs/f_bif1d_cgl1.png']),
         #(bif1d_thal1,[],['figs/f_bif1d_thal1.png','figs/f_bif1d_thal1.pdf']),
-        
-        #(bif1d_gt2,[],['figs/f_bif1d_gt2.png']),
 
-        #(bif_gw2_11,[],['figs/f_bif1d_gw2_11.png']),
-        #(bif_gw2_12,[],['figs/f_bif1d_gw2_12.png']),
-        #(bif_gw2_23,[],['figs/f_bif1d_gw2_23.png']),
+        #(traj_gw2,[],['figs/f_traj_gw2.pdf','figs/f_traj_gw2.png']),
+        #(traj_thal2,[],['figs/f_traj_thal2.pdf','figs/f_traj_thal2.png']),
+        #(traj_gwt,[],['figs/f_traj_gwt.pdf','figs/f_traj_gwt.png']),
+
+        #(bif_gw2_11,[2048],['figs/f_bif1d_gw2_11.png']),
+        (bif_gw2_12,[2048],['figs/f_bif1d_gw2_12.png']),
+        #(bif_gw2_21,[2048],['figs/f_bif1d_gw2_21.png']),
+        #(bif_gw2_23,[2048],['figs/f_bif1d_gw2_23.png']),
+        #(bif_gw2_32,[2048],['figs/f_bif1d_gw2_32.png']), # todo
 
         #(bif_thal2_11,[],['figs/f_bif1d_thal2_11.png']),
-        (bif_thal2_12,[],['figs/f_bif1d_thal2_12.png']),
-        
+        #(bif_thal2_12,[],['figs/f_bif1d_thal2_12.png']),
+        #(bif_thal2_21,[],['figs/f_bif1d_thal2_21.png']), # todo
+        #(bif_thal2_23,[],['figs/f_bif1d_thal2_23.png']),
+        #(bif_thal2_32,[],['figs/f_bif1d_thal2_32.png']), # todo
 
+        #(bif_gwt_11,[2048],['figs/f_bif1d_gwt_11.png']),
+        #(bif_gwt_12,[],['figs/f_bif1d_gwt_12.png']),
+        #(bif_gwt_21,[],['figs/f_bif1d_gwt_21.png']), # todo
+        #(bif_gwt_23,[],['figs/f_bif1d_gwt_23.png']),
+        #(bif_gwt_32,[],['figs/f_bif1d_gwt_32.png']), # todo
+        
     ]
     
     for fig in figures:
