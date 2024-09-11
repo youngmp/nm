@@ -97,18 +97,7 @@ ifft2 = pyfftw.interfaces.scipy_fft.ifft2
 fftwn = pyfftw.interfaces.scipy_fft.fftn
 ifftn = pyfftw.interfaces.scipy_fft.ifftn
 
-
-
 exp = np.exp
-
-#try:
-#    import cupy as cp
-#    import cupyx.scipy.fft as cufft
-#    import scipy.fft
-#    scipy.fft.set_global_backend(cufft)
-#except ImportError:
-#    warnings.warn('Warning: cupy not available. This is ok'
-#                  'if you are not calculating G and H functions')
 
 def flatten(xs):
     for x in xs:
@@ -145,16 +134,15 @@ class nmCoupling(object):
                  load_only_expansions=False,
                  del1=0,
                  iso_mode=False,
-                 pv2=False):
+                 p_del=False):
 
         """
         iso_mode: True loads only isostables, no p_i or H functions
-        pv2: use v2 of generate_p
         N=2 only.
         Reserved names: ...        
         """
 
-        self.pv2 = pv2
+        self.p_del = p_del
         self.iso_mode = iso_mode
         self.load_only_expansions = load_only_expansions
         self.save_fig = save_fig
@@ -173,19 +161,23 @@ class nmCoupling(object):
         system1.pardict['del'+str(system1.idx)] = del1
         system1.rule_par['del'+str(system1.idx)] = del1
         
-        assert(type(_n) is tuple);assert(type(_m) is tuple)
-        #assert(_n[0] in system1.pardict);assert(_m[0] in system2.pardict)
-        
         self.system1 = system1;self.system2 = system2
         self.recompute_list = recompute_list
         self.lowdim = lowdim
 
         self.trunc_deriv = trunc_deriv
         self._n = _n;self._m = _m
+        #self._n = ('om0',system1.freq)
+        #self._m = ('om1',system2.freq)
+
+        assert(type(_n) is tuple);assert(type(_m) is tuple)
+        #assert(_n[0] in system1.pardict);assert(_m[0] in system2.pardict)
+
+        self.om = self._n[1]/self._m[1]
         #self.Tx = self.system1.T/self._n[1]
         #self.Ty = self.system2.T/self._m[1]
 
-        self.om = self._n[1]/self._m[1]
+        
         self.T = 2*np.pi
 
         self.system1.pardict['om'+str(system1.idx)] = self._n[1]
@@ -204,22 +196,11 @@ class nmCoupling(object):
         # discretization for p_X,p_Y
         self.NP = NH
         
-        self.x,self.dx = np.linspace(0,2*np.pi,self.NP,retstep=True,
+        self.x,self.dx = np.linspace(0,2*np.pi,NH,retstep=True,
                                      endpoint=False)
-        
-        self.an,self.dan = np.linspace(0,2*np.pi*self._n[1],self.NP*self._n[1],
-                                       retstep=True,endpoint=False)
 
         # discretization for H_X,H_Y
         self.NH = NH
-        self.bn,self.dbn = np.linspace(0,2*np.pi*self._m[1],NH,
-                                       retstep=True,endpoint=False)
-
-        self.be,self.dbe = np.linspace(0,2*np.pi*self._m[1],NH*self._m[1],
-                                       retstep=True,endpoint=True)
-
-        self.bne,self.dbne = np.linspace(0,2*np.pi*self._n[1],NH*self._n[1],
-                                         retstep=True,endpoint=True)        
 
         self.log_level = log_level;self.log_file = log_file
         
@@ -241,6 +222,10 @@ class nmCoupling(object):
         system1.h['dat']={};system1.h['imp']={};system1.h['lam']={}
         system1.h['sym']={};system1.p['dat']={};system1.p['imp']={}
         system1.p['lam']={};system1.p['sym']={}
+
+        system1.p['dat_del']={};system1.p['imp_del']={}
+        system1.p['lam_del']={};system1.h['dat_del']={};
+        system1.h['imp_del']={};system1.h['lam_del']={}
 
         # global replacement rules based on system index
         system1.rule_lc={};system1.rule_g={};system1.rule_z={}
@@ -290,7 +275,10 @@ class nmCoupling(object):
         system2.h['dat']={};system2.h['imp']={};system2.h['lam']={}
         system2.h['sym']={};system2.p['dat']={};system2.p['imp']={}
         system2.p['lam']={};system2.p['sym']={}
-        
+
+        system2.p['dat_del']={};system2.p['imp_del']={}
+        system2.p['lam_del']={};system2.h['dat_del']={}
+        system2.h['imp_del']={};system2.h['lam_del']={}
         
         for j,key in enumerate(system2.var_names):
             in1 = self.ths[system2.idx]
@@ -339,19 +327,33 @@ class nmCoupling(object):
         self.g_lam_v = lambdify(in1,e4)
         self.g_lam_w = self.g_lam
 
-        if not(self.load_only_expansions):
+        # load G and K
+        self.load_k_sym(system1,system2)
+        self.load_k_sym(system2,system1)
 
-            # mix up terms. G and K
-            self.load_k_sym(system1,system2)
-            self.load_k_sym(system2,system1)
+        self.load_coupling_response(system1)
+        self.load_coupling_response(system2)
 
-            self.load_coupling_response(system1)
-            self.load_coupling_response(system2)
+        self.load_3d(system1,system2)
+        self.load_3d(system2,system1)
 
-            self.load_3d(system1,system2)
-            self.load_3d(system2,system1)
+        # try loading h first. if fail, load everything else.
+        file_dne = 0
+        for k in range(system1.miter):
+            file_dne += self.check_h_dne(system1,system2,k)
+            file_dne += self.check_h_dne(system2,system1,k)
+
+        if file_dne or 'h_'+system1.model_name in self.recompute_list\
+           or 'h_'+system2.model_name in self.recompute_list\
+           or 'h_data_'+system1.model_name in self.recompute_list\
+           or 'h_data_'+system2.model_name in self.recompute_list\
+           or 'p_data_'+system1.model_name in self.recompute_list\
+           or 'p_data_'+system2.model_name in self.recompute_list\
+           or 'p_'+system1.model_name in self.recompute_list\
+           or 'p_'+system2.model_name in self.recompute_list:
 
             #self.load_nicks(system1,system2)
+
 
             if not(self.iso_mode):
 
@@ -361,13 +363,12 @@ class nmCoupling(object):
 
                 for i in range(system1.miter):
 
-                    if self.pv2:
-                        self.load_p_v2(system1,system2,i)
-                        self.load_p_v2(system2,system1,i)
+                    self.load_p(system1,system2,i)
+                    self.load_p(system2,system1,i)
 
-                    else:
-                        self.load_p(system1,system2,i)
-                        self.load_p(system2,system1,i)
+
+                    if self.p_del and i <= 2:
+                        self.load_p_del(system1,system2,i)
 
                 # load het. terms (mean of z and i expansions in $\ve$).
                 #self.load_response_eps(system1)
@@ -380,6 +381,10 @@ class nmCoupling(object):
                     self.load_h(system1,system2,i)
                     self.load_h(system2,system1,i)
 
+        else:
+            for i in range(system1.miter):
+                self.load_h(system1,system2,i)
+                self.load_h(system2,system1,i)
             
     def _init_force(self,system1):
         # system 2 should be forcing function
@@ -738,13 +743,11 @@ class nmCoupling(object):
             gz = sym.expand(z*g)
             gi = sym.expand(i*g)
 
-            gz_coeffs = sym.Poly(gz,()).coeffs()
-
             # truncate
             rule_trunc = {}
             for k in range(system.miter,system.miter**2):
                 for ll in range(k+1):
-                    rule_trunc.update({self.psis[0]**ll*self.psis[1]**(k+1-ll):0})
+                    rule_trunc.update({self.psis[0]**ll*self.psis[1]**(k-ll):0})
 
             gz = gz.subs(rule_trunc)
             gi = gi.subs(rule_trunc)
@@ -784,22 +787,6 @@ class nmCoupling(object):
 
         s1.gz_lam = lambdify([*self.ths,*self.psis],d1)
         s1.gi_lam = lambdify([*self.ths,*self.psis],d2)
-
-        """
-        
-        d1 = s1.G['sym_psi'][s1.var_names[0]].subs(rule_temp1)
-        d1 = d1.subs({s1.t:self.ths[0]})
-        d1 = d1.subs(rule_temp2)
-        d1 = d1.subs({s2.t:self.ths[1]})
-
-        d2 = s2.G['sym_psi'][s2.var_names[0]].subs(rule_temp2)
-        d2 = d2.subs({s2.t:self.ths[1]})
-        d2 = d2.subs(rule_temp1)
-        d2 = d2.subs({s1.t:self.ths[0]})
-
-        self.g0_lam = lambdify([*self.ths,s1.psi],d1)
-        self.g1_lam = lambdify([*self.ths,s2.psi],d2)
-        """
 
     def load_nicks(self,system1,system2):
         """
@@ -877,49 +864,28 @@ class nmCoupling(object):
         fname = system1.p['fnames_data'][k]
         file_dne = not(os.path.isfile(fname))
         
-        if 'p_data_'+system1.model_name in self.recompute_list\
-           or file_dne:
-            
-            
-            #p_data = self.generate_p_square(system1,system2,k)
+        if 'p_data_'+system1.model_name in self.recompute_list or file_dne:
             p_data = self.generate_p(system1,system2,k)
-
-
-            #if not(self.forcing):
-            #p_interp0 = interp2d([0,0],[2*np.pi*self._n[1],
-            #                            2*np.pi*self._m[1]],
-            #                     [self.dan,self.dan],
-            #                     p_data,k=5,p=[True,True])
-
-            # fix indexing (see check_isostable.ipynb)
-            #X,Y = np.meshgrid(self.an*self._n[1],
-            #                  self.an*self._m[1],
-            #                  indexing='ij')
-            #p_data = p_interp0(X-self.om*Y,Y)
-                
+            
             np.savetxt(system1.p['fnames_data'][k],p_data)
 
         else:
-            
             p_data = np.loadtxt(fname)
 
         system1.p['dat'][k] = p_data
 
         n=self._n[1];m=self._m[1]
         x=self.x;dx=self.dx
-        
-        #p_interp = interp2d([0,0],[x[-1]*n,x[-1]*m],[dx*n,dx*m],p_data,
-        #                    k=9,p=[True,True])
 
-        p_interp = interp2d([0,0],[self.T*n,self.T*m],[dx*n,dx*m],p_data,
-                            k=5,p=[True,True])
+        
+        p_interp = interp2d([0,0],[self.T,self.T],[dx,dx],
+                            p_data,k=5,p=[True,True])
 
         ta = self.ths[0];tb = self.ths[1]
         name = 'p_'+system1.model_name+'_'+str(k)
         p_imp = imp_fn(name,self.fast_interp_lam(p_interp))
         lamtemp = lambdify(self.ths,p_imp(ta,tb))
         
-
         if k == 0:
             imp = imp_fn('p_'+system1.model_name+'_0', lambda x: 0*x)
             system1.p['imp'][k] = imp
@@ -950,10 +916,9 @@ class nmCoupling(object):
 
         n = self._n[1];m = self._m[1]
         NP = self.NP
-        data = np.zeros([n*NP,m*NP])
+        data = np.zeros((NP,NP))
         
-        if k == 0:
-            #pA0 is 0 (no forcing function)
+        if k == 0: # p_i^{(0)} is 0
             return data
 
         kappa1 = system1.kappa_val
@@ -972,212 +937,27 @@ class nmCoupling(object):
 
         if ph_imp1 == 0: # keep just in case
             return data
-        
-        lam1 = lambdify(self.ths,ph_imp1)        
 
-        #x = self.an;dx = self.dan
-        x=self.x;dx=self.dx;
-        pfactor=self.pfactor
-        sm=np.arange(0,self.T*pfactor,dx)*m
+        lam1 = lambdify(self.ths,ph_imp1)
+
+        x = self.x;dx = self.dx
+        pfactor = self.pfactor
+        sm = np.arange(0,self.T*pfactor,dx)
         
         fac = self.om*(1-system1.idx) + system1.idx
         exp1 = exp(fac*sm*system1.kappa_val)
 
         g_in = np.fft.fft(exp1)
-        a_i = np.arange(m*NP,dtype=int)
-        
-        for ll in range(n*NP):
-
-            f1 = lam1(x[ll%NP]*n+self.om*sm,sm)
-            f_in = fftw(f1)
-            conv = ifftw(f_in*g_in).real
-            data[(a_i+ll)%(n*NP),a_i] = conv[-m*NP:]
-
-            if ll == 0 and False:
-                fig,axs = plt.subplots(3,1)
-                axs[0].plot(f1[-m*NP:])
-
-                sm2 = np.arange(0,4*np.pi,dx)
-                axs[0].scatter(np.arange(len(sm2)),lam1(0+sm2/2,sm2),s=1)
-                axs[1].plot(exp1)
-                axs[2].plot(conv[-m*NP:])
-                
-                axs[0].set_title('integrand 1')
-                axs[1].set_title('integrand 2')
-                axs[2].set_title('conv')
-                
-                plt.show()
-
-        return fac*data*dx*m
-
-
-    def generate_p_square(self,system1,system2,k):
-        print('p order='+str(k))
-
-        n = self._n[1];m = self._m[1]
-        NP = self.NP
-        data = np.zeros([NP,NP])
-        
-        if k == 0: # p_i^{(0)} is 0
-            return data
-
-        kappa1 = system1.kappa_val
-
-        rule = {**system1.rule_p,**system2.rule_p,**system1.rule_par,
-                **system2.rule_par,**system1.rule_lc,**system2.rule_lc,
-                **system1.rule_i,**system2.rule_i,**system1.rule_g,
-                **system2.rule_g}
-        
-        if self.forcing:
-            imp0 = imp_fn('forcing',system2)
-            lam0 = lambdify(self.ths[1],imp0(self.ths[1]))
-            rule.update({system2.syms[0]:imp0(self.ths[1])})
-
-        ph_imp1 = system1.p['sym'][k].subs(rule)
-
-        if ph_imp1 == 0: # keep just in case
-            return data
-        
-        lam1 = lambdify(self.ths,ph_imp1)        
-        
-        x=self.x;dx=self.dx # _n left out of dx intentionally
-        # dx for sm shouldn't change
-        # it's only when _n != 1 that the input to
-        # theta_X should change.
-        # this is due to how time is rescaled using \omega_Y.
-        pfactor=self.pfactor
-        sm=np.arange(0,self.T*pfactor*m,dx)
-        
-        fac = self.om*(1-system1.idx) + system1.idx
-        exp1 = exp(fac*sm*system1.kappa_val)
-
-        g_in = fftw(exp1)
-
         a_i = np.arange(NP,dtype=int)
+        
+        for ll in range(NP):
 
-        for ll in range(len(x)):
-            f_in = fftw(lam1(x[ll]*self._n[1]+self.om*sm,sm))
+            f_in = fftw(lam1(x[ll]+sm,sm))
             conv = ifftw(f_in*g_in)
-            data[(a_i+ll)%NP,a_i] = conv[-m*NP:].real[::m]
+            data[(a_i+ll)%NP,a_i] = conv[-int(NP):].real
 
-        return fac*data*self.dan
-
-
-    def load_p_v2(self,system1,system2,k):
-        """
-        same as load_p but exploits assumed periodicity.
-        uses generate_p_square_v2
-        """
-
-        fname = system1.p['fnames_data_v2'][k]
-        file_dne = not(os.path.isfile(fname))
-        
-        if 'p_data_'+system1.model_name in self.recompute_list or file_dne:
-            
-            p_data = self.generate_p_square_v2(system1,system2,k)
-                
-            np.savetxt(system1.p['fnames_data_v2'][k],p_data)
-
-        else:
-            
-            p_data = np.loadtxt(fname)
-
-        system1.p['dat'][k] = p_data
-
-        n=self._n[1];m=self._m[1]
-        x=self.x;dx=self.dx
-
-        p_interp = interp2d([0,0],[self.T*n,self.T*m],[dx*n,dx*m],p_data,
-                            k=3,p=[True,True])
-
-        ta = self.ths[0];tb = self.ths[1]
-        name = 'p_'+system1.model_name+'_'+str(k)
-        p_imp = imp_fn(name,self.fast_interp_lam(p_interp))
-        lamtemp = lambdify(self.ths,p_imp(ta,tb))
-        
-
-        if k == 0:
-            imp = imp_fn('p_'+system1.model_name+'_0', lambda x: 0*x)
-            system1.p['imp'][k] = imp
-            system1.p['lam'][k] = 0
-            
-            
-        else:
-            system1.p['imp'][k] = p_imp
-            system1.p['lam'][k] = lamtemp#p_interp
-
-        if self.save_fig:
-            
-            fig,axs = plt.subplots()
-            axs.imshow(p_data)
-            pname = 'figs_temp/p_'
-            pname += system1.model_name+str(k)
-            pname += '_'+str(n)+str(m)
-            pname += '.png'
-            plt.savefig(pname)
-            plt.close()
-
-        # put these implemented functions into the expansion
-        system1.rule_p.update({sym.Indexed('p_'+system1.model_name,k):
-                               system1.p['imp'][k](ta,tb)})
-
+        return data*dx
     
-    def generate_p_square_v2(self,system1,system2,k):
-        """
-        same as generate_p_square but ignores redundant periodicity.
-        the redundancy is an assumption.
-        """
-        
-        print('p order='+str(k))
-
-        n = self._n[1];m = self._m[1]
-        NP = self.NP
-        data = np.zeros([NP,NP])
-        
-        if k == 0: # p_i^{(0)} is 0
-            return data
-
-        kappa1 = system1.kappa_val
-
-        rule = {**system1.rule_p,**system2.rule_p,**system1.rule_par,
-                **system2.rule_par,**system1.rule_lc,**system2.rule_lc,
-                **system1.rule_i,**system2.rule_i,**system1.rule_g,
-                **system2.rule_g}
-        
-        if self.forcing:
-            imp0 = imp_fn('forcing',system2)
-            lam0 = lambdify(self.ths[1],imp0(self.ths[1]))
-            rule.update({system2.syms[0]:imp0(self.ths[1])})
-
-        ph_imp1 = system1.p['sym'][k].subs(rule)
-
-        if ph_imp1 == 0: # keep just in case
-            return data
-        
-        lam1 = lambdify(self.ths,ph_imp1)        
-        
-        x=self.x;dx=self.dx # _n left out of dx intentionally
-        # dx for sm shouldn't change
-        # it's only when _n != 1 that the input to
-        # theta_X should change.
-        # this is due to how time is rescaled using \omega_Y.
-        pfactor = self.pfactor
-        sm = np.arange(0,self.T*pfactor*m,dx)
-        
-        fac = self.om*(1-system1.idx) + system1.idx
-        exp1 = exp(fac*sm*system1.kappa_val)
-
-        g_in = fftw(exp1)
-        
-        a_i = np.arange(NP,dtype=int)
-
-        for ll in range(len(x)):
-            f_in = fftw(lam1(x[ll]*self._n[1]+self.om*sm,sm))
-            conv = ifftw(f_in*g_in)
-            data[(a_i+ll)%NP,a_i] = conv[-NP:].real
-
-        return fac*data*self.dan
-
 
     def load_response_eps(self,system):
         """
@@ -1253,7 +1033,18 @@ class nmCoupling(object):
             logging.info('* Loading H symbolic...')
             print('* Loading H symbolic...')
             system.h['sym'] = dill.load(open(fname,'rb'))
-            
+
+
+    def check_h_dne(self,system1,system2,k):
+        """
+        check if all require h files exist.
+        if not, fail.
+        """
+        fname = system1.h['fnames_data'][k]
+        file_dne = not(os.path.isfile(fname))
+
+        return file_dne
+        
     def load_h(self,system1,system2,k):
 
         fname = system1.h['fnames_data'][k]
@@ -1279,12 +1070,9 @@ class nmCoupling(object):
         hodd = h_data[::-1] - h_data
 
         n=self._n[1];m=self._m[1]
-        #system1.h['lam'][k] = interpb(self.be,h_data,2*np.pi)
-        system1.h['lam'][k] = interp1d(0,self.T*n,self.dx*n,
+            
+        system1.h['lam'][k] = interp1d(0,self.T,self.dx,
                                        h_data,p=True,k=5)
-
-        #system1.h['lam'][k] = interp1d(self.bn[0],self.bn[-1],self.dbn,
-        #                               h_data,p=True,k=5)
 
         if self.save_fig:    
             fig,axs = plt.subplots(figsize=(6,2))
@@ -1310,8 +1098,12 @@ class nmCoupling(object):
                 **system2.rule_par,**system1.rule_lc,**system2.rule_lc,
                 **system1.rule_g,**system2.rule_g,**system1.rule_z,
                 **system2.rule_z,**system1.rule_i,**system2.rule_i}
+
+        rule = copy.deepcopy(rule)
         
         if self.forcing:
+            rule['del0'] = 0
+            rule['del1'] = 0
             imp0 = imp_fn('forcing',system2)
             rule.update({system2.syms[0]:imp0(self.ths[1])})
 
@@ -1320,8 +1112,8 @@ class nmCoupling(object):
         x=self.x;dx=self.dx
         n=self._n[1];m=self._m[1]
         
-        X,Y = np.meshgrid(x*n,x*m,indexing='ij')
-        h_integrand = h_lam(X,Y)
+        X,Y = np.meshgrid(x,x,indexing='ij')
+        h_integrand = h_lam(n*X,m*Y)
         ft2 = fft2(h_integrand)
         # get only those in n:m indices
         # n*i,-m*i
@@ -1331,33 +1123,8 @@ class nmCoupling(object):
         ft2_new /= self.NH
 
         out = ifft(ft2_new).real
-
+        
         return out
-
-        """
-        bn=self.be;dbn=self.dbe
-        #bn=self.be;dbn=self.dbe
-        n=self._n[1];m=self._m[1]
-
-        # calculate mean
-        #X,Y = np.meshgrid(self.an,self.an*self._m[1],indexing='ij')
-        #system1._H0[k] = np.sum(h_lam(X,Y))*self.dan**2/(2*np.pi*self._m[1])**2
-
-        def integrand(x,y):
-            return h_lam(y+self.om*x,x)
-                
-        # calculate coupling function
-        h = np.zeros(self.NH)
-        for j in range(self.NH):
-            #val = np.sum(h_lam(bn[j] + self.om*bn,bn))*dbn
-            val = quad(integrand,bn[0],bn[-1],args=(bn[j],),limit=10000)[0]
-
-            h[j] = val
-
-        out = h/(2*np.pi*self._m[1])
-
-        return out
-        """
         
     def fast_interp_lam(self,fn):
         """
