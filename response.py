@@ -83,7 +83,7 @@ class Response(object):
         var_names = copy.deepcopy(var_names)
         pardict = copy.deepcopy(pardict)
 
-        self.factor = 1 # scale response functions
+        self.factor = factor # scale response functions
         self.lc_prominence = lc_prominence
         
         self.mode = mode
@@ -203,6 +203,7 @@ class Response(object):
 
         self.eye = np.identity(self.dim)
         self.psi, self.eps, self.kappa = sym.symbols('psi eps kappa')
+        self.delv = sym.symbols('delta')
 
         self.syms = []; self.dsyms = []
         for j,name in enumerate(var_names):
@@ -520,10 +521,10 @@ class Response(object):
             self.eigenvectors[:,self.min_lam_idx] *= -1
         
         #einv = np.linalg.inv(self.eigenvectors/2)
-        einv = np.linalg.inv(self.eigenvectors)
+        einv = np.linalg.inv(self.eigenvectors*self.factor)
         idx = np.argsort(np.abs(self.eigenvalues-1))[0]
             
-        self.g1_init = self.eigenvectors[:,self.min_lam_idx]
+        self.g1_init = self.eigenvectors[:,self.min_lam_idx]*self.factor
         self.z0_init = einv[idx,:]
         self.i0_init = einv[self.min_lam_idx,:]
 
@@ -628,7 +629,7 @@ class Response(object):
             else:
                 data = np.loadtxt(fname)
 
-            data *= self.factor
+            #data *= self.factor
     
             self.g['dat'].append(data)
             if self.save_fig:
@@ -745,7 +746,7 @@ class Response(object):
             else:
                 data = np.loadtxt(fname)
 
-            data *= self.factor
+            #data *= self.factor
 
             self.z['dat'].append(data)
             if self.save_fig:
@@ -754,7 +755,7 @@ class Response(object):
             for j,key in enumerate(self.var_names):
 
                 fn = interp1d(self.tlc[0],self.T,
-                              self.dtlc,data[:-1,j],p=True,k=3)
+                              self.dtlc,data[:-1,j],p=True,k=5)
                 imp = imp_fn('z'+key+'_'+str(i),fn)
                 
                 self.z['imp_'+key].append(imp)
@@ -857,7 +858,7 @@ class Response(object):
             else:
                 data = np.loadtxt(fname)
 
-            data *= self.factor
+            #data *= self.factor
 
             self.i['dat'].append(data)
 
@@ -867,7 +868,7 @@ class Response(object):
             for j,key in enumerate(self.var_names):
 
                 fn = interp1d(self.tlc[0],self.T,
-                              self.dtlc,data[:-1,j],p=True,k=3)
+                              self.dtlc,data[:-1,j],p=True,k=5)
                 imp = imp_fn('i'+key+'_'+str(i),fn)
                 
                 self.i['imp_'+key].append(imp)
@@ -1218,8 +1219,8 @@ class Response(object):
             else:
                 y = lam(self.tlc_endpt)
             
-            #fn = interp1d(0,self.T,self.dtlc,y[:-1],p=True,k=3)
-            fn = interp1d(self.tlc[0],self.T,self.dtlc,y[:-1],p=True,k=3)
+            #fn = interp1d(0,self.T,self.dtlc,y[:-1],p=True,k=5)
+            fn = interp1d(self.tlc[0],self.T,self.dtlc,y[:-1],p=True,k=5)
             imp = imp_fn(key,fn)
             
             # save as implemented fn

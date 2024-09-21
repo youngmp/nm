@@ -161,23 +161,19 @@ class nmCoupling(object):
         system1.pardict['del'+str(system1.idx)] = del1
         system1.rule_par['del'+str(system1.idx)] = del1
         
+        assert(type(_n) is tuple);assert(type(_m) is tuple)
+        #assert(_n[0] in system1.pardict);assert(_m[0] in system2.pardict)
+        
         self.system1 = system1;self.system2 = system2
         self.recompute_list = recompute_list
         self.lowdim = lowdim
 
         self.trunc_deriv = trunc_deriv
         self._n = _n;self._m = _m
-        #self._n = ('om0',system1.freq)
-        #self._m = ('om1',system2.freq)
-
-        assert(type(_n) is tuple);assert(type(_m) is tuple)
-        #assert(_n[0] in system1.pardict);assert(_m[0] in system2.pardict)
-
-        self.om = self._n[1]/self._m[1]
         #self.Tx = self.system1.T/self._n[1]
         #self.Ty = self.system2.T/self._m[1]
 
-        
+        self.om = self._n[1]/self._m[1]
         self.T = 2*np.pi
 
         self.system1.pardict['om'+str(system1.idx)] = self._n[1]
@@ -196,11 +192,22 @@ class nmCoupling(object):
         # discretization for p_X,p_Y
         self.NP = NH
         
-        self.x,self.dx = np.linspace(0,2*np.pi,NH,retstep=True,
+        self.x,self.dx = np.linspace(0,2*np.pi,self.NP,retstep=True,
                                      endpoint=False)
+        
+        self.an,self.dan = np.linspace(0,2*np.pi*self._n[1],self.NP*self._n[1],
+                                       retstep=True,endpoint=False)
 
         # discretization for H_X,H_Y
         self.NH = NH
+        self.bn,self.dbn = np.linspace(0,2*np.pi*self._m[1],NH,
+                                       retstep=True,endpoint=False)
+
+        self.be,self.dbe = np.linspace(0,2*np.pi*self._m[1],NH*self._m[1],
+                                       retstep=True,endpoint=True)
+
+        self.bne,self.dbne = np.linspace(0,2*np.pi*self._n[1],NH*self._n[1],
+                                         retstep=True,endpoint=True)        
 
         self.log_level = log_level;self.log_file = log_file
         
@@ -353,7 +360,6 @@ class nmCoupling(object):
            or 'p_'+system2.model_name in self.recompute_list:
 
             #self.load_nicks(system1,system2)
-
 
             if not(self.iso_mode):
 
@@ -865,8 +871,7 @@ class nmCoupling(object):
         file_dne = not(os.path.isfile(fname))
         
         if 'p_data_'+system1.model_name in self.recompute_list or file_dne:
-            p_data = self.generate_p(system1,system2,k)
-            
+            p_data = self.generate_p(system1,system2,k)                
             np.savetxt(system1.p['fnames_data'][k],p_data)
 
         else:
@@ -877,9 +882,8 @@ class nmCoupling(object):
         n=self._n[1];m=self._m[1]
         x=self.x;dx=self.dx
 
-        
-        p_interp = interp2d([0,0],[self.T,self.T],[dx,dx],
-                            p_data,k=5,p=[True,True])
+        p_interp = interp2d([0,0],[self.T*n,self.T*m],[dx*n,dx*m],p_data,
+                            k=5,p=[True,True])
 
         ta = self.ths[0];tb = self.ths[1]
         name = 'p_'+system1.model_name+'_'+str(k)
@@ -916,9 +920,10 @@ class nmCoupling(object):
 
         n = self._n[1];m = self._m[1]
         NP = self.NP
-        data = np.zeros((NP,NP))
+        data = np.zeros([n*NP,m*NP])
         
-        if k == 0: # p_i^{(0)} is 0
+        if k == 0:
+            #pA0 is 0 (no forcing function)
             return data
 
         kappa1 = system1.kappa_val
@@ -929,6 +934,9 @@ class nmCoupling(object):
                 **system2.rule_g}
         
         if self.forcing:
+            # if forcing, set all delta to zero
+            rule['del0'] = 0
+            rule['del1'] = 0
             imp0 = imp_fn('forcing',system2)
             lam0 = lambdify(self.ths[1],imp0(self.ths[1]))
             rule.update({system2.syms[0]:imp0(self.ths[1])})
@@ -937,26 +945,46 @@ class nmCoupling(object):
 
         if ph_imp1 == 0: # keep just in case
             return data
-
-        lam1 = lambdify(self.ths,ph_imp1)
-
-        x = self.x;dx = self.dx
-        pfactor = self.pfactor
-        sm = np.arange(0,self.T*pfactor,dx)
         
-        fac = self.om*(1-system1.idx) + system1.idx
+        lam1 = lambdify(self.ths,ph_imp1)        
+
+        #x = self.an;dx = self.dan
+        x=self.x;dx=self.dx;
+        pfactor=self.pfactor
+        sm=np.arange(0,self.T*pfactor,dx)*m
+
+        if self.forcing:
+            fac = 1
+        else:
+            fac = self.om*(1-system1.idx) + system1.idx
         exp1 = exp(fac*sm*system1.kappa_val)
 
         g_in = np.fft.fft(exp1)
-        a_i = np.arange(NP,dtype=int)
+        a_i = np.arange(m*NP,dtype=int)
         
-        for ll in range(NP):
+        for ll in range(n*NP):
 
-            f_in = fftw(lam1(x[ll]+sm,sm))
-            conv = ifftw(f_in*g_in)
-            data[(a_i+ll)%NP,a_i] = conv[-int(NP):].real
+            f1 = lam1(x[ll%NP]*n+self.om*sm,sm)
+            f_in = fftw(f1)
+            conv = ifftw(f_in*g_in).real
+            data[(a_i+ll)%(n*NP),a_i] = conv[-m*NP:]
 
-        return data*dx
+            if ll == 0 and False:
+                fig,axs = plt.subplots(3,1)
+                axs[0].plot(f1[-m*NP:])
+
+                sm2 = np.arange(0,4*np.pi,dx)
+                axs[0].scatter(np.arange(len(sm2)),lam1(0+sm2/2,sm2),s=1)
+                axs[1].plot(exp1)
+                axs[2].plot(conv[-m*NP:])
+                
+                axs[0].set_title('integrand 1')
+                axs[1].set_title('integrand 2')
+                axs[2].set_title('conv')
+                
+                plt.show()
+
+        return fac*data*dx*m
     
 
     def load_response_eps(self,system):
@@ -1070,9 +1098,12 @@ class nmCoupling(object):
         hodd = h_data[::-1] - h_data
 
         n=self._n[1];m=self._m[1]
-            
-        system1.h['lam'][k] = interp1d(0,self.T,self.dx,
+        #system1.h['lam'][k] = interpb(self.be,h_data,2*np.pi)
+        system1.h['lam'][k] = interp1d(0,self.T*n,self.dx,
                                        h_data,p=True,k=5)
+
+        #system1.h['lam'][k] = interp1d(self.bn[0],self.bn[-1],self.dbn,
+        #                               h_data,p=True,k=5)
 
         if self.save_fig:    
             fig,axs = plt.subplots(figsize=(6,2))
@@ -1098,8 +1129,6 @@ class nmCoupling(object):
                 **system2.rule_par,**system1.rule_lc,**system2.rule_lc,
                 **system1.rule_g,**system2.rule_g,**system1.rule_z,
                 **system2.rule_z,**system1.rule_i,**system2.rule_i}
-
-        rule = copy.deepcopy(rule)
         
         if self.forcing:
             rule['del0'] = 0
@@ -1112,8 +1141,8 @@ class nmCoupling(object):
         x=self.x;dx=self.dx
         n=self._n[1];m=self._m[1]
         
-        X,Y = np.meshgrid(x,x,indexing='ij')
-        h_integrand = h_lam(n*X,m*Y)
+        X,Y = np.meshgrid(x*n,x*m,indexing='ij')
+        h_integrand = h_lam(X,Y)
         ft2 = fft2(h_integrand)
         # get only those in n:m indices
         # n*i,-m*i
@@ -1123,8 +1152,33 @@ class nmCoupling(object):
         ft2_new /= self.NH
 
         out = ifft(ft2_new).real
-        
+
         return out
+
+        """
+        bn=self.be;dbn=self.dbe
+        #bn=self.be;dbn=self.dbe
+        n=self._n[1];m=self._m[1]
+
+        # calculate mean
+        #X,Y = np.meshgrid(self.an,self.an*self._m[1],indexing='ij')
+        #system1._H0[k] = np.sum(h_lam(X,Y))*self.dan**2/(2*np.pi*self._m[1])**2
+
+        def integrand(x,y):
+            return h_lam(y+self.om*x,x)
+                
+        # calculate coupling function
+        h = np.zeros(self.NH)
+        for j in range(self.NH):
+            #val = np.sum(h_lam(bn[j] + self.om*bn,bn))*dbn
+            val = quad(integrand,bn[0],bn[-1],args=(bn[j],),limit=10000)[0]
+
+            h[j] = val
+
+        out = h/(2*np.pi*self._m[1])
+
+        return out
+        """
         
     def fast_interp_lam(self,fn):
         """

@@ -90,7 +90,7 @@ def rhs(t,z,pdict,option='val',idx=''):
 
 def coupling(vars_pair,pdict,option='val',idx=''):
     """
-        
+    
     Synaptic coupling function between Thalamic oscillators.
         
     E.g.,this Python function is the function $G(x_i,x_j)$
@@ -123,10 +123,49 @@ def coupling(vars_pair,pdict,option='val',idx=''):
     idx = str(idx)
     omt = pdict['om'+idx]
     om_fix = pdict['om_fix'+idx]
+    del1 = pdict['del'+idx]
     
     if option in ['val','value']:
-        return -om_fix*omt*np.array([w2*(v*100-pdict['esyn'+idx]),
+        return -om_fix*omt*np.array([w2*(v*100-pdict['esyn'+idx])+del1*100,
                                      0,0,0])/pdict['c'+idx]/100
     elif option in ['sym','symbolic']:
-        return -om_fix*omt*Matrix([w2*(v*100-pdict['esyn'+idx]),
+        return -om_fix*omt*Matrix([w2*(v*100-pdict['esyn'+idx])+del1*100,
                                    0,0,0])/pdict['c'+idx]/100
+
+def main():
+    pd1 = {'gL':0.05,'gna':3,'gk':5,
+           'gt':5,'eL':-70,'ena':50,
+           'ek':-90,'et':0,'esyn':-1,
+           'c':1,'alpha':3,'beta':2,
+           'sigmat':0.8,'vt':-20,
+           'ib':3.5,'del':0,'om':1,'om_fix':1}
+    
+    # default period must be 2*np.pi
+    kws1 = {'var_names':['v','h','r','w'],
+            'pardict':pd1,
+            'rhs':rhs,
+            'coupling':coupling,
+            'init':np.array([-.64,0.71,0.25,0,6]),
+            'TN':10000,
+            'trunc_order':1,
+            'z_forward':False,
+            'i_forward':False,
+            'i_bad_dx':[False,True,False,False,False,False],
+            'max_iter':20,
+            'rtol':1e-12,
+            'atol':1e-12,
+            'rel_tol':1e-9,
+            'save_fig':False,
+            'lc_prominence':.05,
+            'factor':.5}
+
+    system1 = rsp(idx=0,model_name='thal0',**kws1)
+    system2 = rsp(idx=1,model_name='thal1',**kws1)
+
+    a11_p0 = nm(system1,system2,recompute_list=['k_thal0','k_thal1'],
+                _n=('om0',1),_m=('om1',1),NH=1000,
+                save_fig=False,del1=0)
+
+
+if __name__ == "__main__":
+    main()

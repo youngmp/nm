@@ -95,7 +95,6 @@ def coupling(vars_pair,pdict,option='value'):
     x1,y1,z1,v1,x2,y2,z2,v2 = vars_pair
     
     K = pdict['K']
-    #vc = pdict['eps']
     kc = pdict['kc']
     F = 0.5*(v1+v2)
     
@@ -113,7 +112,7 @@ def main():
     pardict = {'v1':.84,'v2':.42,'v4':.35,'v6':.35,'v8':1,
                'k1':1,'k2':1,'k3':.7,'k4':1,'k5':.7,
                'k6':1,'k7':.35,'k8':1,'K':0.5,'kc':1,
-               'n':6,'L':0,'eps':0}
+               'n':6,'L':0}
     
     kwargs = {'g_forward':True,'z_forward':False,'i_forward':False,
               'i_bad_dx':[False,True,False,False,False,False],
