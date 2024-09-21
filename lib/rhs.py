@@ -24,7 +24,7 @@ def rhs_avg_2d(t,y,a,eps=0,del1=0,miter=None):
     dth -= del1/a._m[1]
     return np.array([dth*a._n[1],dps*a._m[1]])
 
-def rhs_avg_1d(t,th,a,eps=0,del1=0,miter=None):
+def rhs_avg_1df(t,th,a,eps=0,del1=0,miter=None):
     """ for forcing only. 1d"""
 
     if miter is None:
@@ -37,7 +37,7 @@ def rhs_avg_1d(t,th,a,eps=0,del1=0,miter=None):
     for i in range(nn):
         dth += eps**(i+1)*a.system1.h['lam'][i](th)
     dth -= del1/a._m[1]
-    return dth*a._n[1]
+    return a._n[1]*dth
 
 
 def _redu_c(t,y,a,eps=0,del1=None,miter=None):
@@ -48,10 +48,16 @@ def _redu_c(t,y,a,eps=0,del1=None,miter=None):
         nn = a.system1.miter
     else:
         nn = miter
-    
+    n = a._n[1]
     h = 0
     for i in range(nn):
-        h += eps**(i+1)*(system1.h['lam'][i](y) - system2.h['lam'][i](y))
+        in1 = y/n
+            
+        h1 = system1.h['lam'][i](in1)
+        h2 = system2.h['lam'][i](in1)
+        d = h1 - h2
+
+        h += eps**(i+1)*d
     return h
 
 
@@ -102,7 +108,7 @@ def _redu_moving_avg(t,y,a,eps=.01,del1=0):
 def _full(t,y,a,eps,del1=None):
     """del1 in a pardict"""
     pd1 = a.system1.pardict;pd2 = a.system2.pardict
-    y1 = y[:4];y2 = y[4:]
+    y1 = y[:len(a.system1.var_names)];y2 = y[len(a.system1.var_names):]
 
     c1 = a.system1.coupling(y,pd1,'val',0)
     c2 = a.system2.coupling(list(y2)+list(y1),pd2,'val',1)
@@ -121,7 +127,7 @@ def _redu_full(t,y,a,eps:float=.01,del1=None):
     thA,psA,thB,psB = y    
     k1 = s1.kappa_val;k2 = s2.kappa_val
 
-    in1 = thA-a.om*thB+t;in2 = t
+    in1 = thA-thB+t;in2 = t
 
     dthA = eps*s1.gz_lam(in1,in2,psA,psB)
     dthB = eps*s2.gz_lam(in1,in2,psA,psB)
@@ -139,14 +145,14 @@ def _redu_3dc_gw(t,y,a,eps:float=.01,del1=None):
     system1 = a.system1;system2 = a.system2
     pdA = a.system1.pardict;pdB = a.system2.pardict
 
-    s,ds = np.linspace(0,2*np.pi*a._m[1],2000,retstep=True)
+    s,ds = np.linspace(0,2*np.pi*a._m[1],5000,retstep=True)
     phi,psA,psB = y
 
     k1 = system1.kappa_val;k2 = system2.kappa_val
     Tm = (2*np.pi*a._m[1])
 
     om = a._n[1]/a._m[1]
-    in1 = phi+om*s;in2 = s
+    in1 = phi+a.om*s;in2 = s
 
     zA = a.th_lam(in1,psA);iA = a.ps_lam(in1,psA)
     zB = a.th_lam(in2,psB);iB = a.ps_lam(in2,psB)
@@ -162,10 +168,10 @@ def _redu_3dc_gw(t,y,a,eps:float=.01,del1=None):
 
     dthA = eps*np.sum(zA*GA)*ds/Tm
     dthB = eps*np.sum(zB*GB)*ds/Tm
-    dphi = dthA - dthB
+    dphi = (dthA - dthB)
     
-    dpsA = k1*psA + eps*np.sum(iA*GA)*ds/Tm
-    dpsB = k2*psB + eps*np.sum(iB*GB)*ds/Tm
+    dpsA = (k1*psA + eps*np.sum(iA*GA)*ds/Tm)
+    dpsB =  k2*psB + eps*np.sum(iB*GB)*ds/Tm
     
     return np.array([dphi,dpsA,dpsB])
 
@@ -179,10 +185,34 @@ def _redu_3dc_thal(t,y,a,eps:float=.01,del1=None):
     phi,psA,psB = y
     k1 = s1.kappa_val;k2 = s2.kappa_val
 
+    s,ds = np.linspace(0,2*np.pi*a._m[1],5000,retstep=True,endpoint=False)
+    Tm = s[-1]
+    om = a._n[1]/a._m[1]
+    in1 = phi+a.om*s;in2 = s
+
+    dthA = np.sum(s1.gz_lam(in1,in2,psA,psB))*ds/Tm
+    dthB = np.sum(s2.gz_lam(in1,in2,psA,psB))*ds/Tm
+    dphi = eps*(dthA - dthB)
+    
+    dpsA = k1*psA + eps*np.sum(s1.gi_lam(in1,in2,psA,psB))*ds/Tm
+    dpsB = k2*psB + eps*np.sum(s2.gi_lam(in1,in2,psA,psB))*ds/Tm
+    
+    return np.array([dphi,dpsA,dpsB])
+
+
+def _redu_3dc_gwt(t,y,a,eps:float=.01,del1=None):
+    """
+    thal-specific 3d (1 phase diff, 2 isostables)
+    """
+    
+    s1 = a.system1;s2 = a.system2
+    phi,psA,psB = y
+    k1 = s1.kappa_val;k2 = s2.kappa_val
+
     s,ds = np.linspace(0,2*np.pi*a._m[1],3000,retstep=True,endpoint=False)
     Tm = s[-1]
     om = a._n[1]/a._m[1]
-    in1 = phi+om*s;in2 = s
+    in1 = phi+a.om*s;in2 = s
 
     dthA = np.sum(s1.gz_lam(in1,in2,psA,psB))*ds/Tm
     dthB = np.sum(s2.gz_lam(in1,in2,psA,psB))*ds/Tm
@@ -206,7 +236,7 @@ def _redu_4dc_thal(t,y,a,eps=.01,del1=None):
     #dper = eps*np.mean(a.system1.z['dat'][0][:,0])
     #dper += eps**2*np.mean(a.system1.z['dat'][1][:,0])
 
-    s,ds = np.linspace(0,2*np.pi*a._m[1],3000,retstep=True,endpoint=False)
+    s,ds = np.linspace(0,2*np.pi*a._m[1],5000,retstep=True,endpoint=False)
     
     Tm = s[-1]
     om = a._n[1]/a._m[1]

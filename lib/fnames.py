@@ -27,21 +27,15 @@ def load_fnames_response(obj,model_pars=''):
                                     for k in range(obj.miter)]
 
     v = '{}g_data_{}{}{}.txt'
-    obj.g['dat_fnames'] = [v.format(obj.dir1,k,
-                                    model_pars,
-                                    sim_pars)
+    obj.g['dat_fnames'] = [v.format(obj.dir1,k,model_pars,sim_pars)
                            for k in range(obj.miter)]
 
     v = '{}z_data_{}{}{}.txt'
-    obj.z['dat_fnames'] = [v.format(obj.dir1,k,
-                                    model_pars,
-                                    sim_pars)
+    obj.z['dat_fnames'] = [v.format(obj.dir1,k,model_pars,sim_pars)
                            for k in range(obj.miter)]
     
     v = '{}i_data_{}{}{}.txt'
-    obj.i['dat_fnames'] = [v.format(obj.dir1,k,
-                                    model_pars,
-                                    sim_pars)
+    obj.i['dat_fnames'] = [v.format(obj.dir1,k,model_pars,sim_pars)
                            for k in range(obj.miter)]
 
         
@@ -70,34 +64,16 @@ def load_fnames_nm(system,obj,model_pars='',coupling_pars=''):
 
     system.G['fname_gz'] = '{}gz_{}_f={}.d'.format(*pars)
     system.G['fname_gi'] = '{}gi_{}_f={}.d'.format(*pars)
+
+    fname_pars = (obj.NP,obj.NH,obj.pfactor,obj._n[1],obj._m[1],
+                  obj.forcing,obj.del1)
+    fname_pars2 = (obj.NP,obj.NH,obj.pfactor,obj._n[1],obj._m[1],
+                  obj.forcing)
     
-    val = '{}p_data_ord={}_NP={}_NH={}_piter={}_n={}_m={}_f={}_de={}.txt'
-    system.p['fnames_data'] = [val.format(system.dir1,k,obj.NP,obj.NH,
-                                          obj.pfactor,obj._n[1],obj._m[1],
-                                          obj.forcing,obj.del1)
+    val = '{}p_data_ord={}_NP={}_NH={}_piter={}_n={}_m={}_f={}.txt'
+    system.p['fnames_data'] = [val.format(system.dir1,k,*fname_pars2)
                                for k in range(system.miter)]
-
-    val_v2 = '{}p_data_v2_ord={}_NP={}_NH={}_piter={}_n={}_m={}_f={}_de={}.txt'
-    system.p['fnames_data_v2'] = [val_v2.format(system.dir1,k,obj.NP,obj.NH,
-                                                obj.pfactor,obj._n[1],obj._m[1],
-                                                obj.forcing,obj.del1)
-                                  for k in range(system.miter)]
-
-    val_del = '{}p_data_del_ord={}_NP={}_NH={}_piter={}_n={}_m={}_f={}.txt'
-    system.p['fnames_data_del'] = [val_del.format(system.dir1,k,obj.NP,obj.NH,
-                                                  obj.pfactor,obj._n[1],
-                                                  obj._m[1],obj.forcing)
-                                   for k in range(system.miter)]
     
     val = '{}h_data_ord={}_NP={}_NH={}_piter={}_n={}_m={}_f={}_de={}.txt'
-    system.h['fnames_data'] = [val.format(system.dir1,k,obj.NP,obj.NH,
-                                          obj.pfactor,obj._n[1],obj._m[1],
-                                          obj.forcing,obj.del1)
+    system.h['fnames_data'] = [val.format(system.dir1,k,*fname_pars)
                                for k in range(system.miter)]
-
-
-    val_del2 = '{}h_data_del_ord={}_NP={}_NH={}_piter={}_n={}_m={}_f={}.txt'
-    system.h['fnames_data_del'] = [val_del2.format(system.dir1,k,obj.NP,obj.NH,
-                                                   obj.pfactor,obj._n[1],
-                                                   obj._m[1],obj.forcing)
-                                   for k in range(system.miter)]

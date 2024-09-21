@@ -22,7 +22,7 @@ from copy import deepcopy
 
 from .rhs import _redu_c
 
-rhs_avg_ld = rhs.rhs_avg_1d
+rhs_avg_ld = rhs.rhs_avg_1df
 rhs_avg = rhs.rhs_avg_2d
 
 #from scipy.interpolate import interp1d
@@ -523,7 +523,8 @@ def bif1d(a,eps,del1,domain,rhs=_redu_c):
 
 
 
-def get_initial_phase_diff_c(phi0,a,eps,del1,max_time=1000,_full_rhs=None):
+def get_initial_phase_diff_c(phi0,a,eps,del1,max_time=1000,_full_rhs=None,
+                             prominence=0.1):
 
     # get first phase estimate based on phi0
     init1 = list(a.system1.lc['dat'][int(phi0*a.system1.TN/(2*np.pi)),:])
@@ -540,7 +541,7 @@ def get_initial_phase_diff_c(phi0,a,eps,del1,max_time=1000,_full_rhs=None):
     # this is in case the ISIs are unequal.
     # adding up the ISIs between n+1 peaks makes the period more accurate.
     for i in range(a._n[1]):
-        pp,tt = get_period(sol,idx_shift=-i)
+        pp,tt = get_period(sol,idx_shift=-i,prominence=prominence)
         period_est += pp
 
         if i == 0:
@@ -620,13 +621,13 @@ def get_phase_lock_full(Y,a,del1,eps_init,eps_final,deps,
                 
                 # get periods and tdiff for oscillator 1
                 for ll in range(a._n[1]):
-                    ts[i,ll] = get_period(solf,idx=0,idx_shift=-ll)[0]
+                    ts[i,ll] = get_period(solf,idx=0,idx_shift=-ll,prominence=prominence)[0]
                     t_diffs[i,ll] = solf.t[idx2[0]]-solf.t[idx1[ll]]
 
                 # get periods for oscillator 2
                 for ll in range(a._m[1]):
                     idxn = len(a.system1.var_names)
-                    ts[i,a._n[1]+ll] = get_period(solf,idx=idxn,idx_shift=-ll)[0]
+                    ts[i,a._n[1]+ll] = get_period(solf,idx=idxn,idx_shift=-ll,prominence=prominence)[0]
                     print('t1,t2',solf.t[idx2[ll]],solf.t[idx1[0]])
                     t_diffs[i,a._n[1]+ll] = solf.t[idx2[ll]]-solf.t[idx1[0]]
                 
@@ -640,7 +641,8 @@ def get_phase_lock_full(Y,a,del1,eps_init,eps_final,deps,
 def follow_phase_diffs(init=0,a=None,del1=0,eps_init=0.02,
                        eps_final=0.0005,deps=-.0005,
                        recompute=False,bifdir='bif1d/',
-                       _full_rhs=None,max_iter=20,max_time=1000):
+                       _full_rhs=None,max_iter=20,max_time=1000,
+                       prominence=0.05):
     
     # branch init
     fname_template1 = 'td_branch_init={}_nm={}{}_del={}_ei={}_ef={}_de={}.txt'
@@ -660,11 +662,11 @@ def follow_phase_diffs(init=0,a=None,del1=0,eps_init=0.02,
     fname2 = bifdir + fname2
 
     kw1 = {'a':a,'del1':del1,'eps_init':eps_init,'eps_final':eps_final,'deps':deps,
-           '_full_rhs':_full_rhs,'max_iter':max_iter}
+           '_full_rhs':_full_rhs,'max_iter':max_iter,'prominence':prominence}
 
     if not(os.path.isfile(fname1)) or not(os.path.isfile(fname2)) or recompute:
         init = get_initial_phase_diff_c(init,a,eps_init,del1,max_time=max_time,
-                                        _full_rhs=_full_rhs)
+                                        _full_rhs=_full_rhs,prominence=prominence)
         print('init',init)
         eps_range,ts,t_diffs = get_phase_lock_full(Y=deepcopy(init),**kw1)
         
@@ -770,7 +772,7 @@ def get_dy_nm_force(rhs,Y,args_temp,eps_pert=1e-4,eps_pert_time=1e-4,
     
 
 def run_bif1d_f(rhs,Y,a,del1,eps_init,eps_final,deps,
-                maxiter:int=100,tol:float=1e-10,
+                max_iter:int=100,tol:float=1e-10,
                 u_sign=-1,mult=1):
     """
     1d bifurcation diagram for the full model with forcing
@@ -797,7 +799,7 @@ def run_bif1d_f(rhs,Y,a,del1,eps_init,eps_final,deps,
         print('eps iter',i,eps,end='                    \n')
         
         while np.linalg.norm(dy) > tol and\
-        counter <= maxiter and\
+        counter <= max_iter and\
         np.linalg.norm(dy)<1:
             
             args_temp = {'fun':rhs,'args':(a,eps,del1),**kw_bif}
@@ -829,7 +831,7 @@ def run_bif1d_f(rhs,Y,a,del1,eps_init,eps_final,deps,
             
             time.sleep(.2)
     
-        if (counter >= maxiter) or (np.linalg.norm(dy) >= 1):
+        if (counter >= max_iter) or (np.linalg.norm(dy) >= 1):
             phase_diffs[i,:] = np.nan
             Y = Y_init
             dy = np.ones(len(Y))/5
@@ -888,7 +890,7 @@ def dy_r3d(rhs,Y,args_temp,h=1e-6,return_sol=False):
 
     return dy
     
-def load_phase_lock_r3d(Y,a,eps,rhs,rel_tol=1e-7,maxiter=30,
+def load_phase_lock_r3d(Y,a,eps,rhs,rel_tol=1e-7,max_iter=30,
                         return_init=True,save=True,
                         recompute=False,bifdir=''):
 
@@ -909,7 +911,7 @@ def load_phase_lock_r3d(Y,a,eps,rhs,rel_tol=1e-7,maxiter=30,
         if not(isfile) or recompute:
 
             phase_diff,Y_init = phase_lock_r3d(Y,a,eps,rhs,rel_tol=1e-7,
-                                               maxiter=30,return_init=True)
+                                               max_iter=30,return_init=True)
 
             dat = np.zeros(1+len(Y_init))
             dat[0] = phase_diff
@@ -922,12 +924,12 @@ def load_phase_lock_r3d(Y,a,eps,rhs,rel_tol=1e-7,maxiter=30,
             Y_init = dat[1:]
     
     else:
-        phase_diff,Y_init = phase_lock_r3d(Y,a,eps,rhs,rel_tol=1e-7,maxiter=30,
-                                           return_init=True)
+        phase_diff,Y_init = phase_lock_r3d(Y,a,eps,rhs,rel_tol=1e-7,
+                                           max_iter=30,return_init=True)
 
     return phase_diff,Y_init
     
-def phase_lock_r3d(Y,a,eps,rhs,rel_tol=1e-7,maxiter=30,
+def phase_lock_r3d(Y,a,eps,rhs,rel_tol=1e-7,max_iter=30,
                    return_init=True,bifdir=''):
 
     """
@@ -941,7 +943,7 @@ def phase_lock_r3d(Y,a,eps,rhs,rel_tol=1e-7,maxiter=30,
 
     counter = 0
 
-    while np.linalg.norm(dy) > rel_tol and counter <= maxiter:
+    while np.linalg.norm(dy) > rel_tol and counter <= max_iter:
 
         args_temp = {'fun':rhs,'args':(a,eps),**kw_bif}
         dy = dy_r3d(rhs,Y_init,args_temp)
@@ -953,7 +955,7 @@ def phase_lock_r3d(Y,a,eps,rhs,rel_tol=1e-7,maxiter=30,
         print(printed,end=end)
         counter += 1
 
-    if (counter >= maxiter) or (np.linalg.norm(dy) >= 10):
+    if (counter >= max_iter) or (np.linalg.norm(dy) >= 10):
         phase_diff = np.nan
         dy = np.ones(len(Y_init))/5
 
@@ -972,7 +974,7 @@ def phase_lock_r3d(Y,a,eps,rhs,rel_tol=1e-7,maxiter=30,
         return phase_diff
 
 
-def get_pl_range_r3d(Y,a,eps_tup,rhs,rel_tol=1e-7,maxiter=100,
+def get_pl_range_r3d(Y,a,eps_tup,rhs,rel_tol=1e-7,max_iter=100,
                      return_init=True):
 
     eps_range = np.arange(*eps_tup)
@@ -983,7 +985,7 @@ def get_pl_range_r3d(Y,a,eps_tup,rhs,rel_tol=1e-7,maxiter=100,
         print('eps iter',i,eps,end='                \n')
         phase_diff,init = phase_lock_r3d(init,a,eps,rhs,
                                          rel_tol=rel_tol,
-                                         maxiter=maxiter,
+                                         max_iter=max_iter,
                                          return_init=return_init)
         #phase_diffs[i,0] = eps_range[i]
         phase_diffs[i] = phase_diff
@@ -991,13 +993,13 @@ def get_pl_range_r3d(Y,a,eps_tup,rhs,rel_tol=1e-7,maxiter=100,
     return eps_range,phase_diffs
 
 
-def follow_locking_3d(init,a,eps_tup,bifdir='bifgw2_r3d/',
+def follow_locking_3d(init,a,eps_tup,bifdir='',
                       recompute=False,rhs=None,max_iter=100):
     """
-    For phase locking in 4d reduced, averaged model.
+    For phase locking in 3d reduced averaged model.
     """
 
-    assert(len(init) == 3)
+    print('eps_tup',eps_tup)
 
     del1 = a.system1.pardict['del0']
     # branch init
@@ -1011,10 +1013,12 @@ def follow_locking_3d(init,a,eps_tup,bifdir='bifgw2_r3d/',
         os.makedirs(bifdir)
     fname = bifdir + fname
 
-    kw1 = {'a':a, 'eps_tup':eps_tup, 'rhs':rhs, 'maxiter':max_iter}
+    kw1 = {'a':a, 'eps_tup':eps_tup, 'rhs':rhs, 'max_iter':max_iter}
 
     if not(os.path.isfile(fname)) or recompute:
-        eps_range,phase_diffs = get_pl_range_r3d(Y=deepcopy(init),
+        print(init,a,eps_tup,rhs)
+        _,init3d = phase_lock_r3d([init,0,0],a,eps_tup[0],rhs,max_iter=max_iter)
+        eps_range,phase_diffs = get_pl_range_r3d(Y=deepcopy(init3d),
                                                  **kw1)
         
         data = np.zeros([len(eps_range),2])
@@ -1062,7 +1066,7 @@ def _get_sol(rhs,y0,t,args,recompute=False,data_dir='sols',idx='',
     return y
 
 
-def _get_sol_3d(rhs,y0,t,args,recompute=False,data_dir='sols',idx='',
+def _get_sol_3d(rhs,y0,t,args,recompute=True,data_dir='sols',idx='',
                 kw_sim={'rtol':1e-7,'atol':1e-7,'method':'LSODA'}):
     """
     load or generate solution.

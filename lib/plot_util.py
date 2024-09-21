@@ -15,6 +15,27 @@ import numpy as np
 import os
 
 
+def draw_vertical_squiggle(ax,x,mag=.05,periods=20,color='k'):
+    """
+    draw a squiggly line at position x with magnitude mag.
+    mag is based on proportion of x-axis limits.
+    freq based on proportion of y-axis limits
+      default to 20 periods.
+    axis to draw on, x-position, magnitude.
+    """
+    xlims = ax.get_xlim()
+    ylims = ax.get_ylim()
+
+    amp = mag*(xlims[1] - xlims[0])
+
+    dt = .01
+    yspan = ylims[-1] - ylims[0]
+    t = np.arange(ylims[0],ylims[-1],yspan/1000)
+    
+    ax.plot(np.sin(periods*2*np.pi*t/yspan)*amp+x,t,color=color)
+
+    return ax
+
 def construct_branch(eps_list,zu,tol:float=.25):
     """
     tol: tolerance to cut discontinuous points.
@@ -24,7 +45,10 @@ def construct_branch(eps_list,zu,tol:float=.25):
     x = [];y = []
     idx2 = 0
     zu = list(zu)
+
+    #print('*****zu',zu)
     for i in range(len(zu)):
+
         if len(zu[i]) > 0:
             
             # take first point
@@ -36,14 +60,18 @@ def construct_branch(eps_list,zu,tol:float=.25):
             # save subsequent points
             else:
                 min_idx = np.argmin(np.abs(y[idx2]-zu[i]))
-                if np.abs(y[idx2]-zu[i][min_idx]) < tol and\
-                   np.abs(eps_list[idx2]-eps_list[min_idx]) < tol:
+                dx = np.abs(eps_list[idx2]-eps_list[min_idx])
+                dy = np.abs(y[idx2]-zu[i][min_idx])
+                if dx+dy < tol:
+                #    print(dx,dy,'zu',zu[i][min_idx],'eps',eps_list[i])
+
                 #if np.abs(y[idx2]-zu[i][min_idx]) < tol or\
                 #   np.abs(np.tan(y[idx2])-np.tan(zu[i][min_idx])) < tol:
                     y.append(zu[i][min_idx])
                     x.append(eps_list[i])
                     zu[i] = np.delete(zu[i],min_idx)
                     idx2 += 1
+        
     return zu, x, y
 
 
@@ -68,17 +96,25 @@ def add_diagram_1d(axs,a,del1,eps_tup=(0.001,.5,200),
     x = [1]
     while len(x)>0:
         zu,x,y = construct_branch(eps_list,zu,tol=tol)
-        axs.plot(x,y,color='tab:red',ls='--')
+        print(np.diff(x),np.diff(y))
+
+        if np.sum((np.abs(np.diff(x))>tol) + (np.abs(np.diff(y))>tol)):
+            pass
+        else:
+            axs.plot(x,y,color='tab:red',ls='--',lw=1.2)
 
     x = [1]
     count = 0
     while len(x)>0:
         zs,x,y = construct_branch(eps_list,zs,tol=tol)
-        if count == 0:
-            label1 = label
+        if np.sum((np.abs(np.diff(x))>tol) + (np.abs(np.diff(y))>tol)):
+            pass
         else:
-            label1 = ''
-        axs.plot(x,y,color='tab:red',label=label1)
+            if count == 0:
+                label1 = label
+            else:
+                label1 = ''
+            axs.plot(x,y,color='tab:red',label=label1,lw=1.2)
         count += 1
 
     if include_limits:
@@ -94,6 +130,7 @@ def add_diagram_1d_scatter(axs,a,del1,eps_tup=(0.001,.5,200),
 
     eps_list = np.linspace(*eps_tup)
     zu = [];zs = []
+    n = a._n[1]
 
     for eps in eps_list:
         z1,z2 = bif1d(a,eps,del1,domain=domain,rhs=rhs)
@@ -402,7 +439,7 @@ def draw_1d_solutions(axs,a,T,eps,init,rhs=_redu_c):
     return axs
 
 
-def draw_3d_solutions(axs,a,T,eps,init,rhs):
+def draw_3d_solutions(axs,a,T,eps,init,rhs,recompute=False):
 
     system1 = a.system1;system2 = a.system2
     kw1 = {'eps':eps,'a':a,'return_data':True}
@@ -410,7 +447,8 @@ def draw_3d_solutions(axs,a,T,eps,init,rhs):
     th_init = init
     
     # load or recompute solution
-    y = _get_sol_3d(rhs,y0=[th_init,0,0],t=t,args=(a,eps,a.del1))
+    y = _get_sol_3d(rhs,y0=[th_init,0,0],t=t,args=(a,eps,a.del1),
+                    recompute=recompute)
 
     axs.plot(np.mod(y[:,0],2*np.pi),t,color='tab:blue',alpha=.75,label='3D',
              zorder=1,lw=2)
