@@ -77,11 +77,12 @@ def construct_branch(eps_list,zu,tol:float=.25):
 
 def add_diagram_1d(axs,a,del1,eps_tup=(0.001,.5,200),
                    rhs=_redu_c,
-                   domain=np.linspace(-.1,2*np.pi+.1,2000),
+                   domain=None,
                    include_limits=True,label='',tol=.25):
     """
     for non-scatter diagrams (a little slower than scatter)
     """
+    domain = np.linspace(-.1,a.T+.1,2000)
     
     zu = [];zs = []
 
@@ -89,8 +90,8 @@ def add_diagram_1d(axs,a,del1,eps_tup=(0.001,.5,200),
     for eps in eps_list:
         z1,z2 = bif1d(a,eps,del1,domain,rhs=rhs)
 
-        zu.append(np.mod(z1,2*np.pi))
-        zs.append(np.mod(z2,2*np.pi))
+        zu.append(np.mod(z1,a.T))
+        zs.append(np.mod(z2,a.T))
 
     # separate branches
     x = [1]
@@ -118,16 +119,17 @@ def add_diagram_1d(axs,a,del1,eps_tup=(0.001,.5,200),
         count += 1
 
     if include_limits:
-        axs.set_ylim(-.1,2*np.pi+.1)
+        axs.set_ylim(-.1,a.T+.1)
         axs.set_xlim(eps_list[0],eps_list[-1])
 
     return axs
 
 def add_diagram_1d_scatter(axs,a,del1,eps_tup=(0.001,.5,200),
-                   rhs=_redu_c,
-                   domain=np.linspace(-.1,2*np.pi+.1,2000),
-                   include_limits=True,label=''):
+                           rhs=_redu_c,
+                           domain=None,
+                           include_limits=True,label=''):
 
+    domain = np.linspace(-.1,a.T+.1,2000)
     eps_list = np.linspace(*eps_tup)
     zu = [];zs = []
     n = a._n[1]
@@ -135,8 +137,8 @@ def add_diagram_1d_scatter(axs,a,del1,eps_tup=(0.001,.5,200),
     for eps in eps_list:
         z1,z2 = bif1d(a,eps,del1,domain=domain,rhs=rhs)
 
-        zu.append(np.mod(z1,2*np.pi))
-        zs.append(np.mod(z2,2*np.pi))
+        zu.append(np.mod(z1,a.T))
+        zs.append(np.mod(z2,a.T))
 
     for xe, ye in zip(eps_list, zu):
         axs.scatter([xe] * len(ye), ye,s=2,c='red')
@@ -145,7 +147,7 @@ def add_diagram_1d_scatter(axs,a,del1,eps_tup=(0.001,.5,200),
         axs.scatter([xe] * len(ye), ye,s=2,c='k')
 
     if include_limits:
-        axs.set_ylim(-.1,2*np.pi+.1)
+        axs.set_ylim(-.1,a.T+.1)
         axs.set_xlim(eps_list[0],eps_list[-1])
 
     return axs
@@ -231,7 +233,7 @@ def add_diagram_2d(axs,a,del1,eps_tup):
         zs,x,y = construct_branch(eps_list,zs)
         axs.plot(x,y,color='tab:blue')
 
-    axs.set_ylim(-.1,2*np.pi+.1)
+    axs.set_ylim(-.1,a.T+.1)
     axs.set_xlim(eps_list[0],eps_list[-1])
 
     return axs
@@ -297,7 +299,7 @@ def add_diagram_full(axs,a,del1,eps_tup,rhs=None,phi0=np.pi,
                            rhs=rhs,phi0=phi0,recompute=recompute,
                            maxt=maxt,scale_t_eps=scale_t_eps)
 
-    zs = np.mod(zs,2*np.pi)
+    zs = np.mod(zs,a.T)
     eps_list = np.linspace(*eps_tup)
 
 
@@ -369,8 +371,8 @@ def draw_full_solutions(axs,a,T,eps,init,full_rhs,recompute=False,
     dt = .02;t = np.arange(0,T,dt)
 
     # estimate initial phase
-    y0a = list(system1.lc['dat'][int((init/(2*np.pi))*system1.TN),:])
-    y0b = list(system2.lc['dat'][int((0/(2*np.pi))*system2.TN),:])
+    y0a = list(system1.lc['dat'][int((init/a.T)*system1.TN),:])
+    y0b = list(system2.lc['dat'][int((0/a.T)*system2.TN),:])
     y0 = np.array(y0a+y0b)
 
     solf = _get_sol(full_rhs,y0,t,args=(a,eps),recompute=recompute)
@@ -378,14 +380,14 @@ def draw_full_solutions(axs,a,T,eps,init,full_rhs,recompute=False,
     tpa, phasea = get_phase(t,solf[:,:4],skipn=skipn,system1=system1)
     tpb, phaseb = get_phase(t,solf[:,4:],skipn=skipn,system1=system2)
 
-    y = np.mod(phasea-a.om*phaseb,2*np.pi)
+    y = np.mod(phasea-a.om*phaseb,a.T)
     axs.scatter(y,tpa,s=5,color='gray',alpha=.25,label=label)
 
     return axs
 
 
 def draw_1d_rhs(axs,a,T,eps,init,rhs=_redu_c):
-    x = np.linspace(0,2*np.pi,200)
+    x = np.linspace(0,a.T,200)
     y = rhs(0,x,a,eps)
     axs.plot(x,y,color='k',lw=1)
     axs.axhline(0,x[0],x[-1],color='gray',lw=1,ls='--')
@@ -402,7 +404,7 @@ def draw_1d_rhs(axs,a,T,eps,init,rhs=_redu_c):
     # solution on 1d phase plane
     solr1d = solve_ivp(rhs,y0=[th_init],**args1)
         
-    xs = np.mod(solr1d.y.T[:,0],2*np.pi)
+    xs = np.mod(solr1d.y.T[:,0],a.T)
     ys = np.zeros(len(xs))
     discont_idxs = np.abs(np.gradient(xs,1)) > np.pi/2
 
@@ -433,7 +435,7 @@ def draw_1d_solutions(axs,a,T,eps,init,rhs=_redu_c):
 
     # solution on 1d phase plane
     solr1d = solve_ivp(rhs,y0=[th_init],**args1)
-    axs.plot(np.mod(solr1d.y.T[:,0],2*np.pi),t,color='tab:red',label='1D',
+    axs.plot(np.mod(solr1d.y.T[:,0],a.T),t,color='tab:red',label='1D',
              ls='--',zorder=5)
         
     return axs
@@ -450,7 +452,7 @@ def draw_3d_solutions(axs,a,T,eps,init,rhs,recompute=False):
     y = _get_sol_3d(rhs,y0=[th_init,0,0],t=t,args=(a,eps,a.del1),
                     recompute=recompute)
 
-    axs.plot(np.mod(y[:,0],2*np.pi),t,color='tab:blue',alpha=.75,label='3D',
+    axs.plot(np.mod(y[:,0],a.T),t,color='tab:blue',alpha=.75,label='3D',
              zorder=1,lw=2)
 
     return axs
@@ -463,10 +465,10 @@ def draw_quick_plot_f(axs,data_list,a,norm=True):
 
         for j in range(a._m[1]+a._n[1]):
             if norm: # normalize by n period
-                y = 2*np.pi*data2[:,j+1]/data1[:,1]
+                y = a.T*data2[:,j+1]/data1[:,1]
             else:
                 y = data2[:,j+1]
-            axs.plot(data1[:,0],np.mod(y,2*np.pi),color='gray',lw=2)
+            axs.plot(data1[:,0],np.mod(y,a.T),color='gray',lw=2)
         
     axs.set_title('Full del={}'.format(a.del1))
 
@@ -475,14 +477,16 @@ def draw_quick_plot_f(axs,data_list,a,norm=True):
 def draw_quick_plot_r3d(axs,data_list,a):
     for i in range(len(data_list)):
         data = data_list[i]
-        axs.plot(data[:,0],np.mod(data[:,1],2*np.pi),ls=':',
+        axs.plot(data[:,0],np.mod(data[:,1],a.T),ls=':',
                  color='tab:red',lw=2)
     
     axs.set_title('r3d del={}'.format(a.del1))
     
     return axs
 
-def quick_plot_f(data_list,a,ylim=[-.1,2*np.pi+.1]):
+def quick_plot_f(data_list,a,ylim=None):
+
+    ylim = [-.1,a.T+.1]
     kwargs = locals()
     
     fig,axs = plt.subplots(figsize=(3,2))
@@ -502,7 +506,8 @@ def quick_plot_r(a,etup):
     axs.set_title('r1d delta={}, k={}'.format(a.del1,a.system1.trunc_order))
     plt.tight_layout()
 
-def quick_plot_r3d(data_list,a,ylim=[-.1,2*np.pi+.1]):
+def quick_plot_r3d(data_list,a,ylim=None):
+    ylim = [-.1,a.T+.1]
     kwargs = locals()
     
     fig,axs = plt.subplots(figsize=(3,2))
@@ -535,8 +540,8 @@ def draw_isi(a,data_list):
         
     
 def quick_plot_combined(a,kw_f=None,kw_r=None,kw_r3d=None,
-                        ylim=[-.1,2*np.pi+.1]):
-    
+                        ylim=None):
+    ylim = [-.1,a.T+.1]
     fig,axs = plt.subplots(figsize=(3,2))
     
     if not(kw_f) is None:
