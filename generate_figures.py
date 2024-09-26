@@ -722,6 +722,7 @@ def traj_thal2(NH=1024):
         print('pl',pl_list[k],'e',e_list[k],';','d',d_list[k])
 
         for j in range(2):
+            
             # run simulations and plot
             #recompute_list = ['p_data_thal0','p_data_thal1']
             #recompute_list += ['h_data_thal0','h_data_thal1']
@@ -747,6 +748,8 @@ def traj_thal2(NH=1024):
                               init_list[k],rhs=_redu_3dc_thal)
 
             del a
+
+            axs_list[k][1,j].set_ylim(T_list[k],0)
             
     # set title
     ct = 0
@@ -816,7 +819,7 @@ def traj_gwt(NH=1024):
     skipn_list = [50]*4
     init_list = [0]*4
 
-    rlist = [[False,True],[False,False],[False,False],[False,False]]
+    rlist = [[False,False],[False,False],[False,False],[False,False]]
 
     full_rhs = _full
     fig, axs_list = _setup_trajectories_plot(mode='c')
@@ -846,7 +849,11 @@ def traj_gwt(NH=1024):
                               init_list[k],rhs=_redu_3dc_gwt,
                               recompute=rlist[k][j])
 
-        del a
+            del a
+
+            axs_list[k][1,j].set_ylim(T_list[k],0)
+
+        
             
     # set title
     ct = 0
@@ -1205,7 +1212,7 @@ def bif1d_cgl1():
 
     fig,axs = _setup_trajectories_plot(labels=False,hspace=.07)
 
-    k = 0
+    k = 0 # 1:1
     a = nmc(system1,None,recompute_list=[],
             _n=('om0',pl_list[k][0]),_m=('om1',pl_list[k][1]),NH=300)
 
@@ -1221,7 +1228,7 @@ def bif1d_cgl1():
     add_diagram_full(axs[k][2,1],a,.08,(.24,.5,100),rhs=_full_cgl1,
                      recompute=False)
 
-    k = 1
+    k = 1 # 2:1
     a = nmc(system1,None,recompute_list=[],
             _n=('om0',pl_list[k][0]),_m=('om1',pl_list[k][1]),NH=300)
 
@@ -1236,7 +1243,7 @@ def bif1d_cgl1():
     add_diagram_full(axs[k][2,1],a,.025,(.145,.5,100),rhs=_full_cgl1,
                      recompute=False)
 
-    k = 2
+    k = 2 # 3;1
     # add model diagrams (bottom left)
     a = nmc(system1,None,recompute_list=[],
             _n=('om0',pl_list[k][0]),_m=('om1',pl_list[k][1]),NH=300)
@@ -1251,7 +1258,7 @@ def bif1d_cgl1():
     add_diagram_full(axs[k][2,1],a,.008,(.164,.5,50),rhs=_full_cgl1,
                      maxt=2000,recompute=False,scale_t_eps=False)
 
-    k = 3
+    k = 3 # 4:1
     # add model diagrams (bottom left)
     a = nmc(system1,None,recompute_list=[],
             _n=('om0',pl_list[k][0]),_m=('om1',pl_list[k][1]),NH=300)
@@ -1328,16 +1335,16 @@ def bif1d_thal1():
     pl_list = [(1,1),(2,1),(1,2),(2,3)]
     T_list = [800,200,1000,1000]
     e_list = [(.05,.05),(.05,.05),(.05,.05),(.05,.05)]
-    d_list = [(.01,.09),(.01,.05),(.0,.035),(.0,.008)]
+    d_list = [(.01,.09),(.01,.05),(.0,.035),(.0,.015)]
     pmax_list = [.5,.5,.5,.5]
     pmin_list = [-.5,-.5,-.5,-.5]
     init_list = [5,5,5.5,5]
 
     full_rhs = _full_thal1
     fig,axs = _setup_trajectories_plot(labels=False,hspace=.07,lo=.06)
-    
+    recompute_list = []
     k = 0
-    a = nmc(system1,None,recompute_list=[],
+    a = nmc(system1,None,recompute_list=recompute_list,
             _n=('om0',pl_list[k][0]),_m=('om1',pl_list[k][1]),NH=300)
 
     # add model diagrams (top left)
@@ -1352,7 +1359,7 @@ def bif1d_thal1():
                      maxt=500,scale_t_eps=False,recompute=False)
     
     k = 1
-    a = nmc(system1,None,recompute_list=[],
+    a = nmc(system1,None,recompute_list=recompute_list,
             _n=('om0',pl_list[k][0]),_m=('om1',pl_list[k][1]),NH=300)
 
     # add model diagrams (top right)
@@ -1368,7 +1375,7 @@ def bif1d_thal1():
 
     k = 2
     # add model diagrams (bottom left)
-    a = nmc(system1,None,recompute_list=[],
+    a = nmc(system1,None,recompute_list=recompute_list,
             _n=('om0',pl_list[k][0]),_m=('om1',pl_list[k][1]),NH=300)
 
     add_diagram_2d(axs[k][0,0],a,.0,(.001,.3,100))
@@ -1383,7 +1390,7 @@ def bif1d_thal1():
     
     k = 3
     # add model diagrams (bottom right)
-    a = nmc(system1,None,recompute_list=[],
+    a = nmc(system1,None,recompute_list=recompute_list,
             _n=('om0',pl_list[k][0]),_m=('om1',pl_list[k][1]),NH=300)
 
     add_diagram_2d(axs[k][0,0],a,.0,(.001,.3,100))
@@ -1392,20 +1399,21 @@ def bif1d_thal1():
                      maxt=10000,scale_t_eps=False,recompute=False,
                      branch_tol=.5)
 
-    add_diagram_2d(axs[k][0,1],a,.008,(.005,.3,200))
-    add_diagram_1d(axs[k][1,1],a,.008,(.005,.3,200),rhs=rhs_avg_1df)
-    add_diagram_full(axs[k][2,1],a,.008,(.023,.085,40),rhs=full_rhs,
-                     maxt=1000,scale_t_eps=False,recompute=False)
+    add_diagram_2d(axs[k][0,1],a,.015,(.005,.3,200))
+    add_diagram_1d(axs[k][1,1],a,.015,(.005,.3,200),rhs=rhs_avg_1df)
+    add_diagram_full(axs[k][2,1],a,.015,(.054,.11,20),rhs=full_rhs,
+                     maxt=1000,scale_t_eps=False,recompute=True)
 
     
     # mark eps values
     for k in range(4):
         text = r'$\varepsilon='+str(e_list[k][0])+'$'
-        axs[k][-1,0].text(e_list[k][0]+.02,5.5,text)
-        axs[k][-1,1].text(e_list[k][0]+.02,5.5,text)
+        axs[k][-1,0].text(e_list[k][0]+.01,5.2,text)
+        axs[k][-1,1].text(e_list[k][0]+.01,5.2,text)
         
         for j in range(3):
-            argt = {'ls':'--','color':'gray','lw':1,'clip_on':False}
+            argt = {'ls':'--','color':'gray','lw':1,'clip_on':False,
+                    'zorder':-1}
             axs[k][j,0].axvline(e_list[k][0],-.05,1.05,**argt)
             axs[k][j,1].axvline(e_list[k][1],-.05,1.05,**argt)
     
@@ -1440,7 +1448,7 @@ def bif1d_thal1():
             ti1 = axs[k][0,j].get_title()
             ti1 += str(pl_list[k][0])+':'+str(pl_list[k][1])
             #t1 += r', $\varepsilon='+str(e_list[k])+'$'
-            ti1 += r', $b = '+str(d_list[k][j])+'$'
+            ti1 += r', $\delta = '+str(d_list[k][j])+'$'
             
             axs[k][0,j].set_title(ti1)
 
@@ -2163,8 +2171,8 @@ def main():
         #(traj_thal2,[2048],['figs/f_traj_thal2.pdf','figs/f_traj_thal2.png']),
         #(traj_gwt,[2048],['figs/f_traj_gwt.pdf','figs/f_traj_gwt.png']),
 
-        #(bif1d_cgl1,[],['figs/f_bif1d_cgl1.png']),
-        #(bif1d_thal1,[],['figs/f_bif1d_thal1.png','figs/f_bif1d_thal1.pdf']),
+        #(bif1d_cgl1,[],['figs/f_bif1d_cgl1.pdf']),
+        (bif1d_thal1,[],['figs/f_bif1d_thal1.pdf']),
 
         #(bif_thal2_11,[2048],['figs/f_bif1d_thal2_11.pdf']),
         #(bif_thal2_12,[2048],['figs/f_bif1d_thal2_12.pdf']),
@@ -2173,9 +2181,9 @@ def main():
         #(bif_thal2_32,[],['figs/f_bif1d_thal2_32.png']), # todo
 
         #(bif_gwt_11,[2048],['figs/f_bif1d_gwt_11.pdf']),
-        (bif_gwt_12,[2048],['figs/f_bif1d_gwt_12.pdf']),
+        #(bif_gwt_12,[2048],['figs/f_bif1d_gwt_12.pdf']),
         #(bif_gwt_21,[],['figs/f_bif1d_gwt_21.png']), # todo
-        (bif_gwt_23,[2048],['figs/f_bif1d_gwt_23.pdf']),
+        #(bif_gwt_23,[2048],['figs/f_bif1d_gwt_23.pdf']),
         #(bif_gwt_32,[],['figs/f_bif1d_gwt_32.png']), # todo
         
     ]
