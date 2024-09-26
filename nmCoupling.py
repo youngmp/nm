@@ -174,7 +174,7 @@ class nmCoupling(object):
         #self.Ty = self.system2.T/self._m[1]
 
         self.om = self._n[1]/self._m[1]
-        self.T = 2*np.pi
+        self.T = self.system1.T
 
         self.system1.pardict['om'+str(system1.idx)] = self._n[1]
         #self.system1.kappa_val *= self._n[1]
@@ -192,22 +192,11 @@ class nmCoupling(object):
         # discretization for p_X,p_Y
         self.NP = NH
         
-        self.x,self.dx = np.linspace(0,2*np.pi,self.NP,retstep=True,
+        self.x,self.dx = np.linspace(0,self.T,self.NP,retstep=True,
                                      endpoint=False)
-        
-        self.an,self.dan = np.linspace(0,2*np.pi*self._n[1],self.NP*self._n[1],
-                                       retstep=True,endpoint=False)
 
         # discretization for H_X,H_Y
         self.NH = NH
-        self.bn,self.dbn = np.linspace(0,2*np.pi*self._m[1],NH,
-                                       retstep=True,endpoint=False)
-
-        self.be,self.dbe = np.linspace(0,2*np.pi*self._m[1],NH*self._m[1],
-                                       retstep=True,endpoint=True)
-
-        self.bne,self.dbne = np.linspace(0,2*np.pi*self._n[1],NH*self._n[1],
-                                         retstep=True,endpoint=True)        
 
         self.log_level = log_level;self.log_file = log_file
         
@@ -948,7 +937,6 @@ class nmCoupling(object):
         
         lam1 = lambdify(self.ths,ph_imp1)        
 
-        #x = self.an;dx = self.dan
         x=self.x;dx=self.dx;
         pfactor=self.pfactor
         sm=np.arange(0,self.T*pfactor,dx)*m
@@ -1098,7 +1086,6 @@ class nmCoupling(object):
         hodd = h_data[::-1] - h_data
 
         n=self._n[1];m=self._m[1]
-        #system1.h['lam'][k] = interpb(self.be,h_data,2*np.pi)
         system1.h['lam'][k] = interp1d(0,self.T*n,self.dx,
                                        h_data,p=True,k=5)
 
@@ -1154,31 +1141,6 @@ class nmCoupling(object):
         out = ifft(ft2_new).real
 
         return out
-
-        """
-        bn=self.be;dbn=self.dbe
-        #bn=self.be;dbn=self.dbe
-        n=self._n[1];m=self._m[1]
-
-        # calculate mean
-        #X,Y = np.meshgrid(self.an,self.an*self._m[1],indexing='ij')
-        #system1._H0[k] = np.sum(h_lam(X,Y))*self.dan**2/(2*np.pi*self._m[1])**2
-
-        def integrand(x,y):
-            return h_lam(y+self.om*x,x)
-                
-        # calculate coupling function
-        h = np.zeros(self.NH)
-        for j in range(self.NH):
-            #val = np.sum(h_lam(bn[j] + self.om*bn,bn))*dbn
-            val = quad(integrand,bn[0],bn[-1],args=(bn[j],),limit=10000)[0]
-
-            h[j] = val
-
-        out = h/(2*np.pi*self._m[1])
-
-        return out
-        """
         
     def fast_interp_lam(self,fn):
         """

@@ -3,7 +3,10 @@ calculate limit cycle,
 monodromy,
 and response functions.
 
-testing
+in this branch, we only consider reciprocally coupled
+models of the same type with a scalar heterogeneity.
+
+The period is not normalized to 2pi.
 """
 
 
@@ -76,8 +79,7 @@ class Response(object):
                  save_fig=False,
                  factor=1,
 
-                 mode='nm',
-                 lc_prominence=0.25):
+                 lc_prominence=0.1):
             
         var_names = copy.deepcopy(var_names)
         pardict = copy.deepcopy(pardict)
@@ -85,7 +87,6 @@ class Response(object):
         self.factor = factor # scale response functions
         self.lc_prominence = lc_prominence
         
-        self.mode = mode
         self.save_fig = save_fig
         # if forcing, period is assumed known.
         self.forcing = False
@@ -269,20 +270,8 @@ class Response(object):
             logging.info('* Loading LC data...')
             z = np.loadtxt(self.lc_fname)
 
-        # normalize period
-        if self.mode == 'nm':
-            self.T = 2*np.pi
             
-            self.pardict[self.om_fix_key] = z[-1,0]/self.T
-            self.rule_par[self.om_fix_key] = z[-1,0]/self.T
-
-            self.T_old = z[-1,0]
-            self.lc['t_old'] = z[:,0]
-            
-            #self.T = z[-1,0]
-
-        else:
-            self.T = z[-1,0]
+        self.T = z[-1,0]
 
         print('self.T',self.T,'omfix',self.pardict[self.om_fix_key])
 
