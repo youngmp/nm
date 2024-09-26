@@ -3,8 +3,7 @@ calculate limit cycle,
 monodromy,
 and response functions.
 
-
-todo: need to check accuracy of response functions
+testing
 """
 
 
@@ -502,6 +501,10 @@ class Response(object):
             print('* Loading monodromy...')
             logging.info('* Loading monodromy...')
             self.M = np.loadtxt(self.m_fname)
+
+        print('Monodromy')
+        print(self.M)
+        print('')
         
         self.eigenvalues, self.eigenvectors = np.linalg.eig(self.M)
 
@@ -527,6 +530,12 @@ class Response(object):
         self.g1_init = self.eigenvectors[:,self.min_lam_idx]*self.factor
         self.z0_init = einv[idx,:]
         self.i0_init = einv[self.min_lam_idx,:]
+
+        print('g1,z0,i0 inits')
+        print(self.g1_init)
+        print(self.z0_init)
+        print(self.i0_init)
+        print('')
 
         logging.debug('eigenvectors'+str(self.eigenvectors))
         
