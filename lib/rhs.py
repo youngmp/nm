@@ -35,7 +35,7 @@ def rhs_avg_1df(t,th,a,eps=0,del1=0,miter=None):
     dth = 0
     
     for i in range(nn):
-        dth += eps**(i+1)*a.system1.h['lam'][i](th)
+        dth += (eps)**(i+1)*a.system1.h['lam'][i](th/a._n[1])
     dth -= del1/a._m[1]
     return a._n[1]*dth
 
@@ -51,14 +51,14 @@ def _redu_c(t,y,a,eps=0,del1=None,miter=None):
     n = a._n[1]
     h = 0
     for i in range(nn):
-        in1 = y/n
+        in1 = a.T*y/n/(2*np.pi)
             
         h1 = system1.h['lam'][i](in1)
         h2 = system2.h['lam'][i](in1)
         d = h1 - h2
 
         h += eps**(i+1)*d
-    return h
+    return h*2*np.pi/a.T
 
 
 def _redu(t,y,a,eps=.01,del1=0):
