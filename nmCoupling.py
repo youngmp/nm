@@ -134,7 +134,7 @@ class nmCoupling(object):
                  load_only_expansions=False,
                  del1=0,
                  iso_mode=False,
-                 p_del=False):
+                 p_del=False,load_all=False):
 
         """
         iso_mode: True loads only isostables, no p_i or H functions
@@ -142,6 +142,7 @@ class nmCoupling(object):
         Reserved names: ...        
         """
 
+        self.load_all = load_all
         self.p_del = p_del
         self.iso_mode = iso_mode
         self.load_only_expansions = load_only_expansions
@@ -174,7 +175,7 @@ class nmCoupling(object):
         #self.Ty = self.system2.T/self._m[1]
 
         self.om = self._n[1]/self._m[1]
-        self.T = self.system1.T
+        self.T = system1.T
 
         self.system1.pardict['om'+str(system1.idx)] = self._n[1]
         #self.system1.kappa_val *= self._n[1]
@@ -346,7 +347,8 @@ class nmCoupling(object):
            or 'p_data_'+system1.model_name in self.recompute_list\
            or 'p_data_'+system2.model_name in self.recompute_list\
            or 'p_'+system1.model_name in self.recompute_list\
-           or 'p_'+system2.model_name in self.recompute_list:
+           or 'p_'+system2.model_name in self.recompute_list\
+           or self.load_all:
 
             #self.load_nicks(system1,system2)
 
@@ -858,6 +860,8 @@ class nmCoupling(object):
 
         fname = system1.p['fnames_data'][k]
         file_dne = not(os.path.isfile(fname))
+
+        print('p fname',fname)
         
         if 'p_data_'+system1.model_name in self.recompute_list or file_dne:
             p_data = self.generate_p(system1,system2,k)                
@@ -921,7 +925,12 @@ class nmCoupling(object):
                 **system2.rule_par,**system1.rule_lc,**system2.rule_lc,
                 **system1.rule_i,**system2.rule_i,**system1.rule_g,
                 **system2.rule_g}
-        
+
+        rule['del0'] /= 4
+        rule['del1'] /= 4
+
+        print('del values',rule['del0'],rule['del1'])
+            
         if self.forcing:
             # if forcing, set all delta to zero
             rule['del0'] = 0
@@ -935,8 +944,20 @@ class nmCoupling(object):
         if ph_imp1 == 0: # keep just in case
             return data
         
-        lam1 = lambdify(self.ths,ph_imp1)        
+        lam1 = lambdify(self.ths,ph_imp1)
 
+        
+        p_integrand1 = lam1(self.x+self.x[-1]/2,self.x)
+        p_integrand2 = lam1(self.x,self.x+self.x[-1]/2)
+        
+        fig,axs = plt.subplots()
+        axs.set_title('Integrand p system '+str(system1.idx))
+        
+        axs.plot(p_integrand1)
+        axs.plot(p_integrand2)
+        plt.show()
+
+        #x = self.an;dx = self.dan
         x=self.x;dx=self.dx;
         pfactor=self.pfactor
         sm=np.arange(0,self.T*pfactor,dx)*m
@@ -1086,6 +1107,7 @@ class nmCoupling(object):
         hodd = h_data[::-1] - h_data
 
         n=self._n[1];m=self._m[1]
+        #system1.h['lam'][k] = interpb(self.be,h_data,2*np.pi)
         system1.h['lam'][k] = interp1d(0,self.T*n,self.dx,
                                        h_data,p=True,k=5)
 
@@ -1138,9 +1160,43 @@ class nmCoupling(object):
         ft2_new = np.asarray(ft2_new)
         ft2_new /= self.NH
 
+        
+        fig,axs = plt.subplots()
+        axs.set_title('Integrand H system '+str(system1.idx))
+        
+        axs.plot(h_integrand[int(self.NH/2),:])
+        axs.plot(h_integrand[:,int(self.NH/2)])
+        plt.show()
+
+
         out = ifft(ft2_new).real
 
         return out
+
+        """
+        bn=self.be;dbn=self.dbe
+        #bn=self.be;dbn=self.dbe
+        n=self._n[1];m=self._m[1]
+
+        # calculate mean
+        #X,Y = np.meshgrid(self.an,self.an*self._m[1],indexing='ij')
+        #system1._H0[k] = np.sum(h_lam(X,Y))*self.dan**2/(2*np.pi*self._m[1])**2
+
+        def integrand(x,y):
+            return h_lam(y+self.om*x,x)
+                
+        # calculate coupling function
+        h = np.zeros(self.NH)
+        for j in range(self.NH):
+            #val = np.sum(h_lam(bn[j] + self.om*bn,bn))*dbn
+            val = quad(integrand,bn[0],bn[-1],args=(bn[j],),limit=10000)[0]
+
+            h[j] = val
+
+        out = h/(2*np.pi*self._m[1])
+
+        return out
+        """
         
     def fast_interp_lam(self,fn):
         """

@@ -961,12 +961,12 @@ def phase_lock_r3d(Y,a,eps,rhs,rel_tol=1e-7,max_iter=30,
 
     else:
         phase_diff = Y_init[0]
-        print('t_diff',np.mod(phase_diff,2*np.pi))
+        print('t_diff',np.mod(phase_diff,a.T))
         
 
     if return_init:
         # trim init for more reliable file name
-        Y_init[0] = np.mod(Y_init[0],2*np.pi)
+        Y_init[0] = np.mod(Y_init[0],a.T)
         for i in range(len(Y_init)):
             Y_init[i] = np.round(Y_init[i],4)
         return phase_diff,Y_init

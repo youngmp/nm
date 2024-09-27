@@ -17,14 +17,12 @@ def rhs_avg_2d(t,y,a,eps=0,del1=0,miter=None):
     th,ps = y
     dth = 0
     dps = a.system1.kappa_val*ps
-
-    in1 = a.T*th/n/(2*np.pi)
     
     for i in range(nn):
-        dth += eps*ps**i*a.hz_lam[i](in1)
-        dps += eps*ps**i*a.hi_lam[i](in1)
+        dth += eps*ps**i*a.hz_lam[i](th)
+        dps += eps*ps**i*a.hi_lam[i](th)
     dth -= del1/a._m[1]
-    return np.array([dth*a._n[1]*2*np.pi/a.T,dps*a._m[1]])
+    return np.array([dth*a._n[1],dps*a._m[1]])
 
 def rhs_avg_1df(t,th,a,eps=0,del1=0,miter=None):
     """ for forcing only. 1d"""
@@ -147,7 +145,7 @@ def _redu_3dc_gw(t,y,a,eps:float=.01,del1=None):
     system1 = a.system1;system2 = a.system2
     pdA = a.system1.pardict;pdB = a.system2.pardict
 
-    s,ds = np.linspace(0,a.T*a._m[1],5000,retstep=True)
+    s,ds = np.linspace(0,2*np.pi*a._m[1],5000,retstep=True)
     phi,psA,psB = y
 
     k1 = system1.kappa_val;k2 = system2.kappa_val
