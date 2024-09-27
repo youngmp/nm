@@ -70,8 +70,8 @@ def load_fnames_nm(system,obj,model_pars='',coupling_pars=''):
     fname_pars2 = (obj.NP,obj.NH,obj.pfactor,obj._n[1],obj._m[1],
                   obj.forcing)
     
-    val = '{}p_data_ord={}_NP={}_NH={}_piter={}_n={}_m={}_f={}.txt'
-    system.p['fnames_data'] = [val.format(system.dir1,k,*fname_pars2)
+    val = '{}p_data_ord={}_NP={}_NH={}_piter={}_n={}_m={}_f={}_de={}.txt'
+    system.p['fnames_data'] = [val.format(system.dir1,k,*fname_pars)
                                for k in range(system.miter)]
     
     val = '{}h_data_ord={}_NP={}_NH={}_piter={}_n={}_m={}_f={}_de={}.txt'
