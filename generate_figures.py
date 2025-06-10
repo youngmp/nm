@@ -25,7 +25,7 @@ import gt
 
 from lib.util import (follow_phase_diffs, dy_r3d, phase_lock_r3d,
                       dy_r3d, get_pl_range_r3d, follow_locking_3d,
-                      pl_exist_2d,_get_sol)
+                      pl_exist_2d,_get_sol,freq_est)
 
 from lib.rhs import (_full, _redu_3dc_gw, _redu_3dc_thal, _redu_3dc_gwt,
                      rhs_avg_1df, rhs_avg_2d)
@@ -88,7 +88,7 @@ kw_cgl_template = {'var_names':['x','y'],
                    'TN':2000,
                    'idx':0,
                    'model_name':'cglf0',
-                   'trunc_order':3,
+                   'trunc_order':1,
                    'recompute_list':[],
                    'g_forward':False,
                    'z_forward':False,
@@ -156,7 +156,7 @@ kw_gw_template = {'var_names':['x','y','z','v'],
 
 kw_sim = {'rtol':1e-7,'atol':1e-7,'method':'LSODA'}
 
-pi_label_short = [r"$0$", r"$\pi$", r"$2\pi$"]
+pi_label_short = [r"$0$", r"$2\pi$"]
 pi_label_half = [r"$0$", r"$\pi/2$", r"$\pi$"]
 pi_label_third = [r"$0$", r"$\pi/3$", r"$2\pi/3$"]
 
@@ -294,11 +294,11 @@ def _full_gwt(t,y,a,eps=0,del1=0):
     out2 = gt.rhs(t,y2,pd2,'val',1) + eps*c2
     return np.array(list(out1)+list(out2))
 
-labeltempf = [r'$\psi$',r'$\mathcal{H}$',r'$t$']
+labeltempf = [r'$\mathcal{H}$',r'$t$']
 labeltempc = [r'$\mathcal{H}$',r'$t$']
 
 def _setup_trajectories_plot(mode='f',labels=True,
-                             wspace=0.1,hspace=0.05,
+                             wspace=0.1,hspace=0.07,
                              padw=0.04,padh=0.05,
                              lo=0.075,hi=0.96):
     """
@@ -308,12 +308,8 @@ def _setup_trajectories_plot(mode='f',labels=True,
     mode: 'f' is for forcing, 'c' is for coupling
     """
 
-    if mode == 'f':
-        w = 8;h = 6
-        nr1 = 3;nc1 = 2
-    elif mode == 'c':
-        w = 8;h = 6
-        nr1 = 2;nc1 = 2
+    w = 8;h = 6
+    nr1 = 2;nc1 = 2
     
     fig = plt.figure(figsize=(w,h))
 
@@ -343,9 +339,7 @@ def _setup_trajectories_plot(mode='f',labels=True,
         axs[k][0,1].tick_params(**{**kwall,**kwl,**kwb})        
         
         if mode == 'f':
-            axs[k][2,1].tick_params(**{**kwall,**kwl})
-            axs[k][1,0].tick_params(**{**kwall,**kwb})
-            axs[k][1,1].tick_params(**{**kwall,**kwl,**kwb})
+            axs[k][1,1].tick_params(**{**kwl})
 
         else:
             axs[k][1,1].tick_params(**{**kwall,**kwl})
@@ -367,40 +361,27 @@ def _setup_trajectories_plot(mode='f',labels=True,
 
             if labels:
                 axs[k][-1,j].margins(y=0)
-                axs[k][-1,j].set_xlabel(r'$\phi$',labelpad=0)
+                axs[k][-1,j].set_xlabel(r'$\phi$',labelpad=-10)
                 
-                axs[k][-1,j].set_xticks(np.arange(0,3,1)*np.pi)
+                axs[k][-1,j].set_xticks([0,2*np.pi])
                 axs[k][-1,j].set_xticklabels(pi_label_short)
-            
+
     return fig,axs
 
 
-def draw_forcing_sols(axs,a,T,eps,del1,pmax,pmin,init,full_rhs,
+def draw_forcing_sols(axs,a,T,eps,del1,init,full_rhs,
                       recompute:bool=False):
     
     nr1,nc1 = axs.shape
     system1 = a.system1
-    kw1 = {'a':a,'return_data':False,'pmin':pmin,'pmax':pmax}
-
-    # draw nullclines
-    for j in range(nc1):
-        co1,co2 = pl_exist_2d(del1=del1[j],eps=eps[j],**kw1)
-        path1 = co1.get_paths()[0]
-        patch1 = matplotlib.patches.PathPatch(path1,facecolor='none',lw=1)
-        axs[0,j].add_patch(patch1)
-
-        path2 = co2.get_paths()[0]
-        patch2 = matplotlib.patches.PathPatch(path2,facecolor='none',lw=1,
-                                              edgecolor='gray',ls=':')
-        axs[0,j].add_patch(patch2)
+    kw1 = {'a':a,'return_data':False}
 
     # draw 1d phase lines
     for j in range(nc1):
-        x = np.linspace(0,2*np.pi,200)
-        y = rhs_avg_1df(0,x,a,eps[j],del1[j])
+        x = np.linspace(0,2*np.pi,200);y = rhs_avg_1df(0,x,a,eps[j],del1[j])
         
-        axs[1,j].plot(x,y,color='k',lw=1)
-        axs[1,j].axhline(0,x[0],x[-1],color='gray',lw=1,ls=':')
+        axs[0,j].plot(x,y,color='k',lw=1)
+        axs[0,j].axhline(0,x[0],x[-1],color='gray',lw=1,ls=':')
 
     # trajectory
     dt = .02;
@@ -411,51 +392,30 @@ def draw_forcing_sols(axs,a,T,eps,del1,pmax,pmin,init,full_rhs,
         y0 = system1.lc['dat'][int((th_init/(2*np.pi))*system1.TN),:]
         args0 = [a,eps[j],del1[j]]
         
-        solf = _get_sol(full_rhs,y0,t,args=args0,recompute=recompute)
-        
+        solf = _get_sol(full_rhs,y0,t,args=args0,recompute=recompute)        
         tp,fp = get_phase(t,solf,skipn=100,system1=system1)
         force_phase = (a._m[1]+del1[j])*tp
-        
         fp2 = np.mod(fp-a.om*force_phase,2*np.pi)
-        axs[2,j].scatter(fp2,tp,s=5,color='gray',alpha=.5,
-                         label='Full')
+
+        # plot full sol
+        axs[1,j].scatter(fp2,tp,s=5,color='gray',alpha=.5,label='Full')
+        axs[1,j].set_ylim(T,0)
         
         args1 = {'t_eval':t,'t_span':[0,t[-1]],'args':(*args0,),**kw_sim}
-
-        solr2d = solve_ivp(rhs_avg_2d,y0=[th_init,0],**args1)
-        axs[2,j].plot(np.mod(solr2d.y.T[:,0],2*np.pi),t,
-                      color='tab:blue',alpha=.75,label='2D')
-        
-        # solution on 2d phase plane
-        xs = np.mod(solr2d.y.T[:,0],2*np.pi)
-        ys = solr2d.y.T[:,1]
-        discont_idxs = np.abs(np.gradient(xs,1)) > np.pi/2
-        
-        xs[discont_idxs] = np.nan
-        ys[discont_idxs] = np.nan
-            
-        line, = axs[0,j].plot(xs,ys,color='tab:blue',alpha=.75)
-        add_arrow_to_line2D(axs[0,j],line,arrow_locs=[.25,.75])
-            
-        axs[0,j].set_ylim(pmin,pmax)
-        axs[2,j].set_ylim(T,0)
-
-        # solution on 1d phase plane
         solr1d = solve_ivp(rhs_avg_1df,y0=[th_init],**args1)
-        axs[1+1,j].plot(np.mod(solr1d.y.T[:,0],2*np.pi),t,
-                        color='tab:red',alpha=.75,label='1D',
-                        ls='--')
+
+        # 1d solution over time
+        axs[1,j].plot(np.mod(solr1d.y.T[:,0],2*np.pi),t,color='tab:red',
+                      alpha=.75,label='1D',ls='--')
         
-        xs = np.mod(solr1d.y.T[:,0],2*np.pi)
-        ys = np.zeros(len(xs))
+        xs = np.mod(solr1d.y.T[:,0],2*np.pi); ys = np.zeros(len(xs))
         discont_idxs = np.abs(np.gradient(xs,1)) > np.pi/2
 
-        xs[discont_idxs] = np.nan
-        ys[discont_idxs] = np.nan
+        xs[discont_idxs] = np.nan; ys[discont_idxs] = np.nan
 
-        line, = axs[1,j].plot(xs,ys,color='tab:red',alpha=.75,
-                              ls='--')
-        add_arrow_to_line2D(axs[1,j],line,arrow_locs=[.25,.75])
+        # 1d solution on phase line
+        line, = axs[0,j].plot(xs,ys,color='tab:red',alpha=.75,ls='--')
+        add_arrow_to_line2D(axs[0,j],line,arrow_locs=[.25,.75])
 
     return axs
 
@@ -568,10 +528,7 @@ def traj_cgl1():
     pl_list = [(1,1),(2,1),(3,1),(4,1)]
     T_list = [500,500,700,1500]
     e_list = [(.2,.2),(.1,.1),(.1,.1),(.1,.1)]
-    #d_list = [(.01,.08),(.01,.025),(.001,.008),(.0007,.0015)]
     d_list = [(.01,.08),(.01,.025),(.001,.008),(.0007,.003)]
-    pmax_list = [1.5,1.5,1.5,1.5]
-    pmin_list = [-1,-1,-1,-1]
     init_list = [1,1,.5,.5]
 
     full_rhs = _full_cgl1
@@ -580,12 +537,12 @@ def traj_cgl1():
     for k in range(len(axs)):
         # run simulations and plot
         a = nmc(system1,None,recompute_list=[],
-                _n=('om0',pl_list[k][0]),_m=('om1',pl_list[k][1]),NH=501,
-                del1=d_list[k])
+                _n=('om0',pl_list[k][0]),
+                _m=('om1',pl_list[k][1]),
+                NH=501,del1=d_list[k])
         
         draw_forcing_sols(axs[k],a,T_list[k],e_list[k],d_list[k],
-                          pmax_list[k],pmin_list[k],init_list[k],
-                          full_rhs,recompute=True)
+                          init_list[k],full_rhs,recompute=True)
 
         del a
 
@@ -608,8 +565,6 @@ def traj_cgl1():
             ti1 += r', $\delta = '+str(d_list[k][j])+'$'
             
             axs[k][0,j].set_title(ti1)
-
-    axs[2][1,0].yaxis.labelpad=-10
     
     
     return fig
@@ -642,8 +597,7 @@ def traj_thal1():
                 _n=('om0',pl_list[k][0]),_m=('om1',pl_list[k][1]),NH=500)
         
         draw_forcing_sols(axs[k],a,T_list[k],e_list[k],d_list[k],
-                          pmax_list[k],pmin_list[k],init_list[k],
-                          full_rhs,recompute=True)
+                          init_list[k],full_rhs,recompute=True)
 
         del a
             
@@ -662,7 +616,6 @@ def traj_thal1():
         for j in range(nc1):
             ti1 = axs[k][0,j].get_title()
             ti1 += str(pl_list[k][0])+':'+str(pl_list[k][1])
-            #t1 += r', $\varepsilon='+str(e_list[k])+'$'
             ti1 += r', $\delta = '+str(d_list[k][j])+'$'
             
             axs[k][0,j].set_title(ti1)
@@ -924,7 +877,6 @@ def _get_fr(rhs,a,eps,del1,th_init=0,dt=.02,T=1000,
             y = np.mod(y,2*np.pi)
 
         freq_force = freq_est(t,a.system1.forcing_fn(timef))
-
         
         freq_full = freq_est(t,y,prominence=.15)
 
@@ -1204,12 +1156,9 @@ def bif1d_cgl1():
     pl_list = [(1,1),(2,1),(3,1),(4,1)]
     e_list = [(.2,.2),(.1,.1),(.1,.1),(.1,.1)]
     d_list = [(.01,.08),(.01,.025),(.001,.008),(.0007,.003)]
-    pmax_list = [1.5,1.5,1.5,1.5]
-    pmin_list = [-1,-1,-1,-1]
     init_list = [1,1,.5,.5]
 
     full_rhs = _full_cgl1
-
     fig,axs = _setup_trajectories_plot(labels=False,hspace=.07)
 
     k = 0 # 1:1
@@ -1217,15 +1166,13 @@ def bif1d_cgl1():
             _n=('om0',pl_list[k][0]),_m=('om1',pl_list[k][1]),NH=300)
 
     # add model diagrams (top left)
-    add_diagram_2d(axs[k][0,0],a,.01,(.001,.5,100))
-    add_diagram_1d(axs[k][1,0],a,.01,(.001,.5,200),rhs=rhs_avg_1df)
-    add_diagram_full(axs[k][2,0],a,.01,(.0275,.5,100),rhs=_full_cgl1)
+    add_diagram_1d(axs[k][0,0],a,.01,(.001,.5,200),rhs=rhs_avg_1df)
+    add_diagram_full(axs[k][1,0],a,.01,(.0275,.5,100),rhs=_full_cgl1)
     #add_diagram_full(axs[0,2],a,.01,(.0275,.5,10),rhs=_full_cgl1,
     #                 phi0=np.pi/4) # adds nothing
 
-    add_diagram_2d(axs[k][0,1],a,.08,(.001,.5,100))
-    add_diagram_1d(axs[k][1,1],a,.08,(.001,.5,200),rhs=rhs_avg_1df)
-    add_diagram_full(axs[k][2,1],a,.08,(.24,.5,100),rhs=_full_cgl1,
+    add_diagram_1d(axs[k][0,1],a,.08,(.001,.5,200),rhs=rhs_avg_1df)
+    add_diagram_full(axs[k][1,1],a,.08,(.24,.5,100),rhs=_full_cgl1,
                      recompute=False)
 
     k = 1 # 2:1
@@ -1233,14 +1180,12 @@ def bif1d_cgl1():
             _n=('om0',pl_list[k][0]),_m=('om1',pl_list[k][1]),NH=300)
 
     # add model diagrams (top right)
-    add_diagram_2d(axs[k][0,0],a,.01,(.001,.5,100))
-    add_diagram_1d(axs[k][1,0],a,.01,(.001,.5,200),rhs=rhs_avg_1df)
-    add_diagram_full(axs[k][2,0],a,.01,(.056,.5,100),rhs=_full_cgl1,
+    add_diagram_1d(axs[k][0,0],a,.01,(.001,.5,200),rhs=rhs_avg_1df)
+    add_diagram_full(axs[k][1,0],a,.01,(.056,.5,100),rhs=_full_cgl1,
                      recompute=False)
 
-    add_diagram_2d(axs[k][0,1],a,.025,(.001,.5,100))
-    add_diagram_1d(axs[k][1,1],a,.025,(.001,.5,200),rhs=rhs_avg_1df)
-    add_diagram_full(axs[k][2,1],a,.025,(.145,.5,100),rhs=_full_cgl1,
+    add_diagram_1d(axs[k][0,1],a,.025,(.001,.5,200),rhs=rhs_avg_1df)
+    add_diagram_full(axs[k][1,1],a,.025,(.145,.5,100),rhs=_full_cgl1,
                      recompute=False)
 
     k = 2 # 3;1
@@ -1248,29 +1193,25 @@ def bif1d_cgl1():
     a = nmc(system1,None,recompute_list=[],
             _n=('om0',pl_list[k][0]),_m=('om1',pl_list[k][1]),NH=300)
 
-    add_diagram_2d(axs[k][0,0],a,.001,(.001,.5,100))
-    add_diagram_1d(axs[k][1,0],a,.001,(.001,.5,200),rhs=rhs_avg_1df)
-    add_diagram_full(axs[k][2,0],a,.001,(.02,.5,100),rhs=_full_cgl1,
+    add_diagram_1d(axs[k][0,0],a,.001,(.001,.5,200),rhs=rhs_avg_1df)
+    add_diagram_full(axs[k][1,0],a,.001,(.02,.5,100),rhs=_full_cgl1,
                      maxt=3500,recompute=False,scale_t_eps=False)
 
-    add_diagram_2d(axs[k][0,1],a,.008,(.001,.5,100))
-    add_diagram_1d(axs[k][1,1],a,.008,(.001,.5,200),rhs=rhs_avg_1df)
-    add_diagram_full(axs[k][2,1],a,.008,(.164,.5,50),rhs=_full_cgl1,
+    add_diagram_1d(axs[k][0,1],a,.008,(.001,.5,200),rhs=rhs_avg_1df)
+    add_diagram_full(axs[k][1,1],a,.008,(.164,.5,50),rhs=_full_cgl1,
                      maxt=2000,recompute=False,scale_t_eps=False)
 
     k = 3 # 4:1
-    # add model diagrams (bottom left)
+    # add model diagrams (bottom right)
     a = nmc(system1,None,recompute_list=[],
             _n=('om0',pl_list[k][0]),_m=('om1',pl_list[k][1]),NH=300)
 
-    add_diagram_2d(axs[k][0,0],a,.0007,(.001,.5,100))
-    add_diagram_1d(axs[k][1,0],a,.0007,(.001,.5,200),rhs=rhs_avg_1df)
-    add_diagram_full(axs[k][2,0],a,.0007,(.086,.5,25),rhs=_full_cgl1,
+    add_diagram_1d(axs[k][0,0],a,.0007,(.001,.5,200),rhs=rhs_avg_1df)
+    add_diagram_full(axs[k][1,0],a,.0007,(.086,.5,25),rhs=_full_cgl1,
                      maxt=5000,recompute=False,scale_t_eps=False)
 
-    add_diagram_2d(axs[k][0,1],a,.0015,(.001,.5,200))
-    add_diagram_1d(axs[k][1,1],a,.0015,(.001,.5,200),rhs=rhs_avg_1df)
-    add_diagram_full(axs[k][2,1],a,.0015,(.22,.5,25),rhs=_full_cgl1,
+    add_diagram_1d(axs[k][0,1],a,.003,(.001,.5,200),rhs=rhs_avg_1df)
+    add_diagram_full(axs[k][1,1],a,.003,(.22,.5,25),rhs=_full_cgl1,
                      maxt=5000,recompute=False,scale_t_eps=False)
 
     # mark eps values
@@ -1279,19 +1220,19 @@ def bif1d_cgl1():
         axs[k][-1,0].text(e_list[k][0]+.02,.25,text)
         axs[k][-1,1].text(e_list[k][0]+.02,.25,text)
         
-        for j in range(3):
+        for j in range(2):
             argt = {'ls':'--','color':'gray','lw':1,'clip_on':False}
             axs[k][j,0].axvline(e_list[k][0],-.05,1.05,**argt)
             axs[k][j,1].axvline(e_list[k][1],-.05,1.05,**argt)
     
     for i in range(len(axs)):
-        for j in range(3):
+        for j in range(2):
             axs[i][j,0].set_ylabel(r'$\phi$',labelpad=0)
             for k in range(2):
                 axs[i][j,k].set_ylim(-.1,2*np.pi+.1)
                 axs[i][j,k].set_xlim(0,.5)
             
-                axs[i][j,k].set_yticks(np.arange(0,3,1)*np.pi)
+                axs[i][j,k].set_yticks([0,2*np.pi])
                 axs[i][j,k].set_yticklabels(pi_label_short)
 
             
@@ -2171,8 +2112,8 @@ def main():
         #(traj_thal2,[2048],['figs/f_traj_thal2.pdf','figs/f_traj_thal2.png']),
         #(traj_gwt,[2048],['figs/f_traj_gwt.pdf','figs/f_traj_gwt.png']),
 
-        #(bif1d_cgl1,[],['figs/f_bif1d_cgl1.pdf']),
-        (bif1d_thal1,[],['figs/f_bif1d_thal1.pdf']),
+        (bif1d_cgl1,[],['figs/f_bif1d_cgl1.pdf']),
+        #(bif1d_thal1,[],['figs/f_bif1d_thal1.pdf']),
 
         #(bif_thal2_11,[2048],['figs/f_bif1d_thal2_11.pdf']),
         #(bif_thal2_12,[2048],['figs/f_bif1d_thal2_12.pdf']),
