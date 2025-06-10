@@ -866,12 +866,15 @@ class nmCoupling(object):
         
 
     def load_p(self,system1,system2,k):
+        """
+        These p functions are in terms of the fast phases, not slow phases.
+        """
 
         fname = system1.p['fnames_data'][k]
         file_dne = not(os.path.isfile(fname))
         
         if 'p_data_'+system1.model_name in self.recompute_list or file_dne:
-            p_data = self.generate_p(system1,system2,k)                
+            p_data = self.generate_p(system1,system2,k)
             np.savetxt(system1.p['fnames_data'][k],p_data)
 
         else:
@@ -941,11 +944,16 @@ class nmCoupling(object):
             lam0 = lambdify(self.ths[1],imp0(self.ths[1]))
             rule.update({system2.syms[0]:imp0(self.ths[1])})
 
+        #rule['del0'] *= 20
+        #rule['del1'] *= 20
+        #print('del vals',rule['del0'],rule['del1'])
+
         ph_imp1 = system1.p['sym'][k].subs(rule)
 
         if ph_imp1 == 0: # keep just in case
             return data
-        
+
+        # forcing function
         lam1 = lambdify(self.ths,ph_imp1)        
 
         #x = self.an;dx = self.dan
@@ -1129,6 +1137,9 @@ class nmCoupling(object):
                 **system2.rule_par,**system1.rule_lc,**system2.rule_lc,
                 **system1.rule_g,**system2.rule_g,**system1.rule_z,
                 **system2.rule_z,**system1.rule_i,**system2.rule_i}
+
+        print('system1.rule_p',system1.rule_p)
+        print('system2.rule_p',system2.rule_p)
         
         if self.forcing:
             rule['del0'] = 0
@@ -1137,6 +1148,10 @@ class nmCoupling(object):
             rule.update({system2.syms[0]:imp0(self.ths[1])})
 
         h_lam = lambdify(self.ths,system1.h['sym'][k].subs(rule))
+
+        #rule['del0'] *= 20
+        #rule['del1'] *= 20
+        #print('h del vals',rule['del0'],rule['del1'])
 
         x=self.x;dx=self.dx
         n=self._n[1];m=self._m[1]

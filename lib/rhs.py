@@ -35,7 +35,7 @@ def rhs_avg_1df(t,th,a,eps=0,del1=0,miter=None):
     dth = 0
     
     for i in range(nn):
-        dth += eps**(i+1)*a.system1.h['lam'][i](th)
+        dth += eps**(i+1)*a.system1.h['lam'][i](th/a._n[1])
     dth -= del1/a._m[1]
     return a._n[1]*dth
 

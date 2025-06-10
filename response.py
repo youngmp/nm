@@ -118,7 +118,7 @@ class Response(object):
         
         self.trunc_order = trunc_order
         self.miter = self.trunc_order+1
-        
+
         self.log_level = log_level
         self.log_file = log_file
 
