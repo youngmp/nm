@@ -2,6 +2,7 @@
 nmCoupling.py computes the higher-order interaction functions
 for $N=2$ heterogeneous models
 
+
 For a given oscillator,
 * Solve for $\phi$ in terms of $\\theta_i$, (13), (14) (Park and Wilson 2020)
 * Compute the higher-order interaction functions (15) (Park and Wilson 2020)
@@ -126,7 +127,6 @@ class nmCoupling(object):
                  max_n=-1, # Fourier terms. -1 = no truncation
                  
                  log_level='CRITICAL',log_file='log_nm.log',
-                 lowdim=False,
                  save_fig=False,
                  pfactor=None,
                  
@@ -166,7 +166,6 @@ class nmCoupling(object):
         
         self.system1 = system1;self.system2 = system2
         self.recompute_list = recompute_list
-        self.lowdim = lowdim
 
         self.trunc_deriv = trunc_deriv
         self._n = _n;self._m = _m
@@ -401,15 +400,14 @@ class nmCoupling(object):
         slib.load_coupling_expansions(system1)
 
         self.load_force(system1)
-        if not(self.lowdim):
 
-            self.generate_p_force_sym()
-            self.generate_h_force_sym()
+        self.generate_p_force_sym()
+        self.generate_h_force_sym()
 
-            print('* Loading p...')
-            for k in range(self.system1.miter):
-                self.load_p(system1,system1,k)
-                self.load_h(system1,system1,k)
+        print('* Loading p...')
+        for k in range(self.system1.miter):
+            self.load_p(system1,system1,k)
+            self.load_h(system1,system1,k)
 
     def load_force(self,system1):
 
