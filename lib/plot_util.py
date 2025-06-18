@@ -96,7 +96,7 @@ def add_diagram_1d(axs,a,del1,eps_tup=(0.001,.5,200),
     x = [1]
     while len(x)>0:
         zu,x,y = construct_branch(eps_list,zu,tol=tol)
-        print(np.diff(x),np.diff(y))
+        #print(np.diff(x),np.diff(y))
 
         if np.sum((np.abs(np.diff(x))>tol) + (np.abs(np.diff(y))>tol)):
             pass
@@ -246,11 +246,12 @@ def load_diagram_full(a,del1,eps_tup=[0.01,0.011,2],dir1='bifdat',
     besides the peaks that are closest to the peak of the oscillator.
     important for, e.g., 1:2 forcing.
     """
+    
     model_name = a.system1.model_name
     ratio = str(a._n[1])+str(a._m[1])
     elo, ehi, N = eps_tup
-    rawname_s = '{}/{}_full_s_p0={}_ratio={}_elo={}_ehi={}_N={}.npy'
-    aa = (dir1,model_name,phi0,ratio,elo,ehi,N,)
+    rawname_s = '{}/{}_full_s_del1={}_p0={}_ratio={}_elo={}_ehi={}_N={}.npy'
+    aa = (dir1,model_name,del1,phi0,ratio,elo,ehi,N,)
     fname_s = rawname_s.format(*aa)
     
     if not(os.path.isdir(dir1)):
@@ -301,12 +302,12 @@ def add_diagram_full(axs,a,del1,eps_tup,rhs=None,phi0=np.pi,
     eps_list = np.linspace(*eps_tup)
 
 
-    print('zs original',zs)
+    #print('zs original',zs)
     if a._m[1] > 1:
         for i in range(a._m[1]):
             zs,x,y = construct_branch(eps_list,zs,tol=branch_tol)
             axs.plot(x,y,color='k')
-        print('zs remaining',zs)
+        #print('zs remaining',zs)
         # now that zs has a bunch of empty elements, remove them until
         # a nonempty element is found.
         zs_remainder = []
@@ -318,7 +319,7 @@ def add_diagram_full(axs,a,del1,eps_tup,rhs=None,phi0=np.pi,
                 # check if point is close to existing points on diagram
                 for pt_y in zs[i]:
                     pt_x = eps_list[i]
-                    print('')
+                    #print('')
                     print('check point',pt_x,pt_y)
                     diff_prev = 10
                     for line in axs.lines:
@@ -328,7 +329,7 @@ def add_diagram_full(axs,a,del1,eps_tup,rhs=None,phi0=np.pi,
                         #print('diff min',np.amin(diff),diff_prev)
                         if np.amin(diff) < diff_prev:
                             diff_prev = np.amin(diff)
-                    print(diff_prev,similarity_tol)
+                    #print(diff_prev,similarity_tol)
                     if diff_prev > similarity_tol:
                         temp_list.append(pt_y)
 
@@ -355,6 +356,64 @@ def add_diagram_full(axs,a,del1,eps_tup,rhs=None,phi0=np.pi,
     
 
     return axs
+
+
+
+
+def load_diagram_full_f(a,del1,eps_tup=[0.01,0.011,2],dir1='bifdat',
+                      rhs=None,phi0=np.pi,recompute=False,
+                      maxt=100,scale_t_eps=True):
+    
+    """
+    load diagram for forced case
+    
+    winow shift: needed to search for other phase-locked states
+    besides the peaks that are closest to the peak of the oscillator.
+    important for, e.g., 1:2 forcing.
+    """
+    
+    model_name = a.system1.model_name
+    ratio = str(a._n[1])+str(a._m[1])
+    elo, ehi, N = eps_tup
+    rawname_s = '{}/{}_full_s_del1={}_p0={}_ratio={}_elo={}_ehi={}_N={}.npy'
+    aa = (dir1,model_name,del1,phi0,ratio,elo,ehi,N,)
+    fname_s = rawname_s.format(*aa)
+    
+    if not(os.path.isdir(dir1)):
+        os.mkdir(dir1)
+
+    file_dne = not(os.path.isfile(fname_s))
+    #file_dne += not(os.path.isfile(fname_u))
+
+    eps_list = np.linspace(*eps_tup)
+
+    if file_dne or recompute:
+        eps_list = np.linspace(*eps_tup)
+        phi_list = []
+        for eps_init in eps_list:
+            if scale_t_eps:
+                tot = maxt/eps_init
+            else:
+                tot = maxt
+            
+            phi = util.get_phase_diff_f_v2(rhs=rhs,
+                                           phi0=phi0,
+                                           a=a,
+                                           eps=eps_init,
+                                           del1=del1,
+                                           max_time=tot)
+            
+            phi_list.append(phi)
+
+        np.savetxt(fname_s,np.array(phi_list))
+        #np.save(fname_u,np.array(zu,dtype=object))
+
+        
+    else:
+         phi_list = list(np.loadtxt(fname_s))
+         #zu = np.load(fname_u,allow_pickle=True)
+
+    return phi_list#,zu
 
 
 def draw_full_solutions(axs,a,T,eps,init,full_rhs,recompute=False,

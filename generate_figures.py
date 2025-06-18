@@ -308,7 +308,10 @@ def _setup_trajectories_plot(mode='f',labels=True,
     mode: 'f' is for forcing, 'c' is for coupling
     """
 
-    w = 8;h = 6
+    if mode == 'f':
+        w = 8;h = 5
+    else:
+        w = 8;h = 6
     nr1 = 2;nc1 = 2
     
     fig = plt.figure(figsize=(w,h))
@@ -343,6 +346,75 @@ def _setup_trajectories_plot(mode='f',labels=True,
 
         else:
             axs[k][1,1].tick_params(**{**kwall,**kwl})
+            
+        for i in range(nr1):
+            if labels:
+
+                axs[k][i,0].sharey(axs[k][i,1])
+
+                if mode == 'c':
+                    axs[k][i,0].set_ylabel(labeltempc[i],labelpad=0)
+                else:
+                    axs[k][i,0].set_ylabel(labeltempf[i],labelpad=0)
+                for j in range(nc1):
+                    axs[k][i,j].margins(x=0)
+                    axs[k][i,j].set_xlim(0,2*np.pi)
+
+        for j in range(nc1):
+
+            if labels:
+                axs[k][-1,j].margins(y=0)
+                axs[k][-1,j].set_xlabel(r'$\phi$',labelpad=-10)
+                
+                axs[k][-1,j].set_xticks([0,2*np.pi])
+                axs[k][-1,j].set_xticklabels(pi_label_short)
+
+    return fig,axs
+
+
+def _setup_bif_plot(mode='f',labels=True,
+                    wspace=0.1,hspace=0.07,
+                    padw=0.04,padh=0.09,
+                    lo=0.09,hi=0.94):
+    """
+    plot arranged as 0 top left, 1 top right, 2 bottom left, 3 bottom right
+    each object in axs is a 2x3 set of axis objects.
+
+    mode: 'f' is for forcing, 'c' is for coupling
+    """
+
+    if mode == 'f':
+        w = 8;h = 4
+    else:
+        w = 8;h = 6
+    nr1 = 1;nc1 = 2
+    
+    fig = plt.figure(figsize=(w,h))
+
+    kws = {'wspace':wspace,'hspace':hspace,'nrows':nr1,'ncols':nc1}
+
+    gs1 = fig.add_gridspec(left=lo, right=0.5-padw,bottom=0.5+padh,top=hi,**kws)
+    axs1 = [[fig.add_subplot(gs1[i,j]) for j in range(nc1)] for i in range(nr1)]
+
+    gs2 = fig.add_gridspec(left=0.5+padw, right=hi,bottom=0.5+padh,top=hi,**kws)
+    axs2 = [[fig.add_subplot(gs2[i,j]) for j in range(nc1)] for i in range(nr1)]
+
+    gs3 = fig.add_gridspec(left=lo, right=.5-padw,bottom=lo,top=.5-padh,**kws)
+    axs3 = [[fig.add_subplot(gs3[i,j]) for j in range(nc1)] for i in range(nr1)]
+
+    gs4 = fig.add_gridspec(left=.5+padw, right=hi,bottom=lo,top=.5-padh,**kws)
+    axs4 = [[fig.add_subplot(gs4[i,j]) for j in range(nc1)] for i in range(nr1)]
+
+    axs = [np.asarray(axs1),np.asarray(axs2),np.asarray(axs3),np.asarray(axs4)]
+
+    # remove left tick label for right panel
+    kwall = {'axis':'both','which':'both'}
+    kwb = {'labelbottom':False,'bottom':False}
+    kwl = {'labelleft':False,'left':False}
+    
+    for k in range(len(axs)):
+        #axs[k][0,0].tick_params(**{**kwall,**kwb})
+        axs[k][0,1].tick_params(**{**kwl})
             
         for i in range(nr1):
             if labels:
@@ -527,8 +599,8 @@ def traj_cgl1():
 
     pl_list = [(1,1),(2,1),(3,1),(4,1)]
     T_list = [500,500,700,1500]
-    e_list = [(.2,.2),(.1,.1),(.1,.1),(.1,.1)]
-    d_list = [(.01,.08),(.01,.025),(.001,.008),(.0007,.003)]
+    e_list = [(.1,.1),(.1,.1),(.1,.1),(.05,.05)]
+    d_list = [(.01,.04),(.01,.025),(.001,.008),(.0001,.0007)]
     init_list = [1,1,.5,.5]
 
     full_rhs = _full_cgl1
@@ -1154,88 +1226,128 @@ def bif1d_cgl1():
     system1 = rsp(**{'pardict':pd_cgl_template,**kw_cgl})
 
     pl_list = [(1,1),(2,1),(3,1),(4,1)]
-    e_list = [(.2,.2),(.1,.1),(.1,.1),(.1,.1)]
-    d_list = [(.01,.08),(.01,.025),(.001,.008),(.0007,.003)]
+    e_list = [(.1,.1),(.1,.1),(.1,.1),(.05,.05)]
+    d_list = [(.01,.04),(.01,.025),(.001,.008),(.0001,.0007)]
     init_list = [1,1,.5,.5]
+    xlims = [(0,.3),(0,.3),(0,.3),(0,.15)]
 
     full_rhs = _full_cgl1
-    fig,axs = _setup_trajectories_plot(labels=False,hspace=.07)
+    fig,axs = _setup_bif_plot(labels=False,hspace=.07)
 
-    k = 0 # 1:1
+    ############### 1:1 (top left)
+    k = 0 
+    a = nmc(system1,None,recompute_list=[],
+            _n=('om0',pl_list[k][0]),_m=('om1',pl_list[k][1]),NH=300)
+    
+    add_diagram_1d(axs[k][0,0],a,d_list[k][0],(.001,.3,200),rhs=rhs_avg_1df)
+    
+    etup = (.0275,.3,50)
+    bif11a = load_diagram_full_f(a,d_list[k][0],eps_tup=etup,dir1='bifdat2',
+                                 rhs=_full_cgl1,phi0=np.pi,recompute=False,
+                                 maxt=500)
+    bif11a = np.array(bif11a)
+    axs[k][0,0].plot(np.linspace(*etup),bif11a,color='k')
+    
+    add_diagram_1d(axs[k][0,1],a,d_list[k][1],(.001,.3,200),rhs=rhs_avg_1df)
+    etup = (.11,.3,51)
+    bif11b = load_diagram_full_f(a,d_list[k][1],eps_tup=etup,dir1='bifdat2',
+                                 rhs=_full_cgl1,phi0=np.pi,recompute=False,
+                                 maxt=500)
+    bif11b = np.array(bif11b)
+    axs[k][0,1].plot(np.linspace(*etup),bif11b,color='k')
+
+    ############### 2:1 (top right)
+    k = 1 
     a = nmc(system1,None,recompute_list=[],
             _n=('om0',pl_list[k][0]),_m=('om1',pl_list[k][1]),NH=300)
 
-    # add model diagrams (top left)
-    add_diagram_1d(axs[k][0,0],a,.01,(.001,.5,200),rhs=rhs_avg_1df)
-    add_diagram_full(axs[k][1,0],a,.01,(.0275,.5,100),rhs=_full_cgl1)
-    #add_diagram_full(axs[0,2],a,.01,(.0275,.5,10),rhs=_full_cgl1,
-    #                 phi0=np.pi/4) # adds nothing
+    add_diagram_1d(axs[k][0,0],a,.01,(.001,.3,200),rhs=rhs_avg_1df)
+    etup = (.056,.3,50)
+    bif21a = load_diagram_full_f(a,d_list[k][0],eps_tup=etup,dir1='bifdat2',
+                                 rhs=_full_cgl1,phi0=np.pi,recompute=False,
+                                 maxt=500)
+    bif21a = np.array(bif21a)
+    axs[k][0,0].plot(np.linspace(*etup),bif21a,color='k')
 
-    add_diagram_1d(axs[k][0,1],a,.08,(.001,.5,200),rhs=rhs_avg_1df)
-    add_diagram_full(axs[k][1,1],a,.08,(.24,.5,100),rhs=_full_cgl1,
-                     recompute=False)
+    add_diagram_1d(axs[k][0,1],a,.025,(.001,.3,200),rhs=rhs_avg_1df)
+    etup = (.145,.3,50)
+    bif21b = load_diagram_full_f(a,d_list[k][1],eps_tup=etup,dir1='bifdat2',
+                                 rhs=_full_cgl1,phi0=np.pi,recompute=False,
+                                 maxt=500)
+    bif21b = np.array(bif21b)
+    axs[k][0,1].plot(np.linspace(*etup),bif21b,color='k')
 
-    k = 1 # 2:1
+    ############### 3:1 (bottom left)
+    k = 2
     a = nmc(system1,None,recompute_list=[],
             _n=('om0',pl_list[k][0]),_m=('om1',pl_list[k][1]),NH=300)
 
-    # add model diagrams (top right)
-    add_diagram_1d(axs[k][0,0],a,.01,(.001,.5,200),rhs=rhs_avg_1df)
-    add_diagram_full(axs[k][1,0],a,.01,(.056,.5,100),rhs=_full_cgl1,
-                     recompute=False)
+    add_diagram_1d(axs[k][0,0],a,d_list[k][0],(.001,.3,200),rhs=rhs_avg_1df)
+    etup = (.02,.3,50)
+    bif31a = load_diagram_full_f(a,d_list[k][0],eps_tup=etup,dir1='bifdat2',
+                                 rhs=_full_cgl1,phi0=np.pi,recompute=False,
+                                 maxt=500)
+    bif31a = np.array(bif31a)
+    axs[k][0,0].plot(np.linspace(*etup),bif31a,color='k')
+    #add_diagram_full(axs[k][0,0],a,d_list[k][0],etup,rhs=_full_cgl1,
+    #                 maxt=3500,recompute=False,scale_t_eps=False)
 
-    add_diagram_1d(axs[k][0,1],a,.025,(.001,.5,200),rhs=rhs_avg_1df)
-    add_diagram_full(axs[k][1,1],a,.025,(.145,.5,100),rhs=_full_cgl1,
-                     recompute=False)
+    add_diagram_1d(axs[k][0,1],a,d_list[k][1],(.001,.3,200),rhs=rhs_avg_1df)
+    etup = (.164,.3,50)
+    bif31b = load_diagram_full_f(a,d_list[k][1],eps_tup=etup,dir1='bifdat2',
+                                 rhs=_full_cgl1,phi0=np.pi,recompute=False,
+                                 maxt=500)
+    bif31b = np.array(bif31b)
+    axs[k][0,1].plot(np.linspace(*etup),bif31b,color='k')
+    #add_diagram_full(axs[k][0,1],a,d_list[k][1],etup,rhs=_full_cgl1,
+    #                 maxt=2000,recompute=False,scale_t_eps=False)
 
-    k = 2 # 3;1
-    # add model diagrams (bottom left)
+    ############### 4:1 (bottom right)
+    k = 3
     a = nmc(system1,None,recompute_list=[],
             _n=('om0',pl_list[k][0]),_m=('om1',pl_list[k][1]),NH=300)
 
-    add_diagram_1d(axs[k][0,0],a,.001,(.001,.5,200),rhs=rhs_avg_1df)
-    add_diagram_full(axs[k][1,0],a,.001,(.02,.5,100),rhs=_full_cgl1,
-                     maxt=3500,recompute=False,scale_t_eps=False)
+    add_diagram_1d(axs[k][0,0],a,d_list[k][0],(.001,.15,200),rhs=rhs_avg_1df)
+    etup = (.01,.15,100)
+    bif41a = load_diagram_full_f(a,d_list[k][0],eps_tup=etup,dir1='bifdat2',
+                                 rhs=_full_cgl1,phi0=np.pi,recompute=False,
+                                 maxt=500)
+    bif41a = np.array(bif41a)
+    axs[k][0,0].plot(np.linspace(*etup),bif41a,color='k')
+    
+    #add_diagram_full(axs[k][0,0],a,d_list[k][0],etup,rhs=_full_cgl1,
+    #                 maxt=500,recompute=False,scale_t_eps=False)
 
-    add_diagram_1d(axs[k][0,1],a,.008,(.001,.5,200),rhs=rhs_avg_1df)
-    add_diagram_full(axs[k][1,1],a,.008,(.164,.5,50),rhs=_full_cgl1,
-                     maxt=2000,recompute=False,scale_t_eps=False)
-
-    k = 3 # 4:1
-    # add model diagrams (bottom right)
-    a = nmc(system1,None,recompute_list=[],
-            _n=('om0',pl_list[k][0]),_m=('om1',pl_list[k][1]),NH=300)
-
-    add_diagram_1d(axs[k][0,0],a,.0007,(.001,.5,200),rhs=rhs_avg_1df)
-    add_diagram_full(axs[k][1,0],a,.0007,(.086,.5,25),rhs=_full_cgl1,
-                     maxt=5000,recompute=False,scale_t_eps=False)
-
-    add_diagram_1d(axs[k][0,1],a,.003,(.001,.5,200),rhs=rhs_avg_1df)
-    add_diagram_full(axs[k][1,1],a,.003,(.22,.5,25),rhs=_full_cgl1,
-                     maxt=5000,recompute=False,scale_t_eps=False)
+    add_diagram_1d(axs[k][0,1],a,d_list[k][1],(.001,.15,200),rhs=rhs_avg_1df)
+    etup = (.081,.15,25)
+    bif41b = load_diagram_full_f(a,d_list[k][1],eps_tup=etup,dir1='bifdat2',
+                                 rhs=_full_cgl1,phi0=np.pi,recompute=False,
+                                 maxt=500)
+    bif41b = np.array(bif41b)
+    axs[k][0,1].plot(np.linspace(*etup),bif41b,color='k')
+    #add_diagram_full(axs[k][0,1],a,d_list[k][1],etup,rhs=_full_cgl1,
+    #                 maxt=500,recompute=False,scale_t_eps=False)
 
     # mark eps values
     for k in range(4):
-        text = r'$\varepsilon='+str(e_list[k][0])+'$'
-        axs[k][-1,0].text(e_list[k][0]+.02,.25,text)
-        axs[k][-1,1].text(e_list[k][0]+.02,.25,text)
+        #text = r'$\varepsilon='+str(e_list[k][0])+'$'
+        #axs[k][-1,0].text(e_list[k][0]+.01,2*np.pi-.5,text,fontsize=9)
+        #axs[k][-1,1].text(e_list[k][0]+.01,2*np.pi-.5,text,fontsize=9)
         
-        for j in range(2):
-            argt = {'ls':'--','color':'gray','lw':1,'clip_on':False}
+        for j in range(1):
+            argt = {'ls':'--','color':'gray','lw':1,'clip_on':True}
             axs[k][j,0].axvline(e_list[k][0],-.05,1.05,**argt)
             axs[k][j,1].axvline(e_list[k][1],-.05,1.05,**argt)
     
     for i in range(len(axs)):
-        for j in range(2):
+        for j in range(1):
             axs[i][j,0].set_ylabel(r'$\phi$',labelpad=0)
             for k in range(2):
                 axs[i][j,k].set_ylim(-.1,2*np.pi+.1)
-                axs[i][j,k].set_xlim(0,.5)
-            
+                axs[i][j,k].set_xlim(*xlims[i])
+                                
                 axs[i][j,k].set_yticks([0,2*np.pi])
                 axs[i][j,k].set_yticklabels(pi_label_short)
-
-            
 
         for j in range(2):
             axs[i][-1,j].set_xlabel(r'$\varepsilon$',labelpad=0)
@@ -1260,7 +1372,7 @@ def bif1d_cgl1():
             
             axs[k][0,j].set_title(ti1)
 
-    #axs[2][1,0].yaxis.labelpad=-10
+    
 
     return fig
 
@@ -2126,6 +2238,7 @@ def main():
         #(bif_gwt_21,[],['figs/f_bif1d_gwt_21.png']), # todo
         #(bif_gwt_23,[2048],['figs/f_bif1d_gwt_23.pdf']),
         #(bif_gwt_32,[],['figs/f_bif1d_gwt_32.png']), # todo
+        
         
     ]
     

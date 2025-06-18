@@ -104,6 +104,7 @@ def freq_est(t,y,transient=.5,width=10,prominence=.05,return_idxs=False):
     Estimate the oscillator frequency
     For use only with the frequency ratio plots
     """
+    
     peak_idxs = sp.signal.find_peaks(y,width=width,prominence=prominence)[0]
     peak_idxs = peak_idxs[int(len(peak_idxs)*transient):]
     freq = 2*np.pi/np.mean(np.diff(t[peak_idxs]))
@@ -370,40 +371,118 @@ def get_period(sol,idx:int=0,prominence:float=.25,
     """
     sol: solution object from solve_ivp
     idx: index of desired variable
-
-    TODO: need to make sure that subsequent peaks are
-    actually after 1 full period.
+    nm: n:m locking numbers
     """
     
     tn = len(sol.y.T)
-    peak_idxs = sp.signal.find_peaks(sol.y.T[:,idx],
-                                     prominence=prominence)[0]
-    maxidx = peak_idxs[-2+idx_shift]
-    maxidx_prev = peak_idxs[-3+idx_shift]
+    peak_idxs = sp.signal.find_peaks(sol.y.T[:,idx],prominence=prominence)[0]
+    n_half = int(len(peak_idxs)/2)
 
-    #t_prev_est = (sol.t[maxidx]-init[-1])
-    #t_prev_idx = np.argmin(np.abs(t_prev_est-sol.t))
-    #maxidx_est = np.argmin(np.abs(peak_idxs-t_prev_idx))
-    #maxidx_prev = peak_idxs[maxidx_est]
+    # instead of always using the last points
+    # start with the max idx after 50% of the simulation as a starting point.
+
+    # sorted indices of peak values
+    peak_idxs_sorted = np.argsort(sol.y.T[peak_idxs[n_half:],idx])[::-1]
+
+    if peak_idxs_sorted[0] == 0:
+        idx_temp = peak_idxs_sorted[1]
+    else:
+        idx_temp = peak_idxs_sorted[0]
+        
+    maxidx = peak_idxs[n_half:][idx_temp]
+    maxidx_prev = peak_idxs[n_half:][idx_temp-1]
 
     def sol_min(t):
         return -sol.sol(t)[idx]
 
     # get stronger estimates of max values
     # use optimization on ode solution
-    pad1lo = (sol.t[maxidx]-sol.t[maxidx-1])/2
-    pad1hi = (sol.t[maxidx+1]-sol.t[maxidx])/2
-    bounds1 = [sol.t[maxidx]-pad1lo,sol.t[maxidx]+pad1hi]
+    pad1t = (sol.t[maxidx]-sol.t[maxidx-5])/2
+    bounds1 = [sol.t[maxidx]-pad1t,sol.t[maxidx]+pad1t]
     res1 = sp.optimize.minimize_scalar(sol_min,bounds=bounds1)
 
-    pad2lo = (sol.t[maxidx_prev]-sol.t[maxidx_prev-1])/2
-    pad2hi = (sol.t[maxidx_prev+1]-sol.t[maxidx_prev])/2
-    bounds2 = [sol.t[maxidx_prev]-pad2lo,sol.t[maxidx_prev]+pad2hi]
+    pad2t = (sol.t[maxidx_prev]-sol.t[maxidx_prev-5])/2
+    bounds2 = [sol.t[maxidx_prev]-pad2t,sol.t[maxidx_prev]+pad2t]
     res2 = sp.optimize.minimize_scalar(sol_min,bounds=bounds2)
+
+    print('res period',res1.x,res2.x)
 
     T_init = res1.x - res2.x
     
     return T_init,res1.x
+
+
+def get_period_all(sol,idx:int=0,prominence:float=.25,
+                   idx_shift:int=0,n:int=0)->float:
+    """
+    Gets each peak-to-peak period T_i of a given oscillator,
+    for i = 1,...,n, where n is the number of peak to peak
+    periods that add up to 2pi (the oscillator locking number).
+    
+    sol: solution object from solve_ivp
+    idx: index of desired variable
+    n: multiple of desired period
+
+    Returns n numbers. T1,...Tn
+
+    It's just really rare for there to be nonequal peaks with different periods.
+    Small eps means peak-to-peak periods and amplitudes are generally the same.
+    Greater eps means peak-to-peak periods differ along with amplitudes.
+    So picking the largest peak amplitude (after transients) is a reasonable
+    starting point.
+    """
+    
+    tn = len(sol.y.T)
+    peak_idxs = sp.signal.find_peaks(sol.y.T[:,idx],prominence=prominence)[0]
+
+    # start with the max idx after 50% of the simulation as a starting point.
+    n_half = int(len(peak_idxs)/2)
+
+    # get sorted indices of peak values
+    peak_idxs_sorted = np.argsort(sol.y.T[peak_idxs[n_half:],idx])[::-1]
+
+    # avoids getting a peak at zero or last index and having issues with opt.
+    if peak_idxs_sorted[0] in [0,1,2,3,
+                               len(peak_idxs_sorted)-1,
+                               len(peak_idxs_sorted)-2,
+                               len(peak_idxs_sorted)-3,
+                               len(peak_idxs_sorted)-4]:
+        idx_temp = peak_idxs_sorted[4]
+    else:
+        idx_temp = peak_idxs_sorted[0]
+
+
+    # the max idx is taken to be at the largest of all peaks
+    # also get next n peaks
+    maxidxs = peak_idxs[n_half:][idx_temp:idx_temp+n]
+    maxidxs_prev = peak_idxs[n_half:][idx_temp-1:idx_temp-1+n]
+
+    def sol_min(t):
+        return -sol.sol(t)[idx]
+
+    
+    Tlist = []
+
+    for maxidx,maxidx_prev in zip(maxidxs,maxidxs_prev):
+       # get stronger estimates of max values
+       # use optimization on ode solution
+       pad1t = (sol.t[maxidx]-sol.t[maxidx-5])/2
+       bounds1 = [sol.t[maxidx]-pad1t,sol.t[maxidx]+pad1t]
+       res1 = sp.optimize.minimize_scalar(sol_min,bounds=bounds1)
+
+       pad2t = (sol.t[maxidx_prev]-sol.t[maxidx_prev-5])/2
+       bounds2 = [sol.t[maxidx_prev]-pad2t,sol.t[maxidx_prev]+pad2t]
+       res2 = sp.optimize.minimize_scalar(sol_min,bounds=bounds2)
+
+       #print('res period',res1.x,res2.x)
+
+       T_init = res1.x - res2.x
+
+       Tlist.append((T_init,res1.x))
+    
+    return Tlist
+
+
 
 
 
@@ -464,6 +543,8 @@ def get_phase_diff_f(rhs,phi0,a,eps,del1,u_sign:int=-1,
     for shift in range(a._m[1]):
         bounds1 = [time_est-period_est*(1+2*shift)*a._n[1]/2/a._m[1],
                    time_est+period_est*(1-2*shift)*a._n[1]/2/a._m[1]]
+        #print(time_est,period_est,shift)
+        #print(bounds1)
         res1 = sp.optimize.minimize_scalar(u_min,bounds=bounds1)
         ress.append(res1.x)
 
@@ -504,6 +585,64 @@ def get_phase_diff_f(rhs,phi0,a,eps,del1,u_sign:int=-1,
 
     
     return np.asarray(phis)
+
+
+def get_phase_diff_f_v2(rhs,phi0,a,eps,del1,u_sign:int=-1,max_time=3000):
+    """
+    get phase difference given phase-locking for a forced system.
+
+    rhs: right-hand side of full system
+    phi0: initial phase of full system
+    
+    u_sign: simple way to make sure that phase zero starts at appropriate
+    place for certain forcing functions.
+    """
+    
+    init1 = list(a.system1.lc['dat'][int(phi0*a.system1.TN/(2*np.pi)),:])
+    init = np.array(init1+[2*np.pi])
+    
+    # run for a while and get period
+    t = np.arange(0,max_time,.01)
+    sol = solve_ivp(rhs,[0,max_time],init[:-1],args=(a,eps,del1),
+                    t_eval=t,**kw_bif)
+
+    # generate forcing time series
+    u_temp = a.system1.forcing_fn(t*(a._m[1]+del1))
+    
+    # get period estimates
+    Tlist = get_period_all(sol,n=a._n[1])
+    print('eps=',eps,'; Tlist=',Tlist)
+
+    # get initial condition at zero phase of forcing function
+    def u_min(t):
+        return a.system1.forcing_fn(t*(a._m[1]+del1))
+
+
+    phis = []
+
+    # pick the peak amplitude as a starting point
+    time_est = Tlist[0][1]
+    period_est = Tlist[0][0]
+    bounds1 = [time_est-period_est*a._n[1]/a._m[1]/2,
+               time_est+period_est*a._n[1]/a._m[1]/2]
+
+    res1 = sp.optimize.minimize_scalar(u_min,bounds=bounds1)
+
+    total_period = 0
+    for i in range(len(Tlist)):
+        total_period += Tlist[i][0]
+
+    # phase diff for each peak-to-peak period
+    for (period_est,time_est) in Tlist:
+
+        # diff taken in time not phase, so order is reversed.
+        phi = np.mod(a._n[1]*2*np.pi*(res1.x - time_est)/total_period,2*np.pi)
+
+        phis.append(phi)
+
+    
+    return np.asarray(phis)
+
 
 
 def bif1d(a,eps,del1,domain,rhs=_redu_c):
