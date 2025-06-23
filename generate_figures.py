@@ -598,7 +598,7 @@ def traj_cgl1():
     system1 = rsp(**{'pardict':pd_cgl_template,**kw_cgl})
 
     pl_list = [(1,1),(2,1),(3,1),(4,1)]
-    T_list = [500,500,700,1500]
+    T_list = [500,500,700,10000]
     e_list = [(.1,.1),(.1,.1),(.1,.1),(.05,.05)]
     d_list = [(.01,.04),(.01,.025),(.001,.008),(.0001,.0007)]
     init_list = [1,1,.5,.5]
@@ -1229,7 +1229,7 @@ def bif1d_cgl1():
     e_list = [(.1,.1),(.1,.1),(.1,.1),(.05,.05)]
     d_list = [(.01,.04),(.01,.025),(.001,.008),(.0001,.0007)]
     init_list = [1,1,.5,.5]
-    xlims = [(0,.3),(0,.3),(0,.3),(0,.15)]
+    xlims = [(0,.295),(0,.295),(0,.295),(0,.145)]
 
     full_rhs = _full_cgl1
     fig,axs = _setup_bif_plot(labels=False,hspace=.07)
@@ -1330,9 +1330,6 @@ def bif1d_cgl1():
 
     # mark eps values
     for k in range(4):
-        #text = r'$\varepsilon='+str(e_list[k][0])+'$'
-        #axs[k][-1,0].text(e_list[k][0]+.01,2*np.pi-.5,text,fontsize=9)
-        #axs[k][-1,1].text(e_list[k][0]+.01,2*np.pi-.5,text,fontsize=9)
         
         for j in range(1):
             argt = {'ls':'--','color':'gray','lw':1,'clip_on':True}
@@ -1374,6 +1371,77 @@ def bif1d_cgl1():
 
     
 
+    return fig
+
+
+
+def bif2d_cgl1():
+    
+    kw_cgl = copy.deepcopy(kw_cgl_template)
+    kw_cgl['rhs'] = c1.rhs_old2
+    system1 = rsp(**{'pardict':pd_cgl_template,**kw_cgl})
+
+    pl_list = [(1,1),(2,1),(3,1),(4,1)]
+    #e_list = [(.1,.1),(.1,.1),(.1,.1),(.05,.05)]
+    #d_list = [(.01,.04),(.01,.025),(.001,.008),(.0001,.0007)]
+    init_list = [1,1,.5,.5]
+    xlims = [(0,.295),(0,.295),(0,.295),(0,.145)]
+
+    full_rhs = _full_cgl1
+    fig,axs = _setup_bif_plot(labels=False,hspace=.07)
+
+    ############### 1:1 (top left)
+
+    ############### 2:1 (top right)
+
+    ############### 3:1 (bottom left)
+
+    ############### 4:1 (bottom right)
+
+    """
+    # mark eps values
+    for k in range(4):
+        
+        for j in range(1):
+            argt = {'ls':'--','color':'gray','lw':1,'clip_on':True}
+            axs[k][j,0].axvline(e_list[k][0],-.05,1.05,**argt)
+            axs[k][j,1].axvline(e_list[k][1],-.05,1.05,**argt)
+    
+    for i in range(len(axs)):
+        for j in range(1):
+            axs[i][j,0].set_ylabel(r'$\phi$',labelpad=0)
+            for k in range(2):
+                axs[i][j,k].set_ylim(-.1,2*np.pi+.1)
+                axs[i][j,k].set_xlim(*xlims[i])
+                                
+                axs[i][j,k].set_yticks([0,2*np.pi])
+                axs[i][j,k].set_yticklabels(pi_label_short)
+
+        for j in range(2):
+            axs[i][-1,j].set_xlabel(r'$\varepsilon$',labelpad=0)
+
+    # set title
+    ct = 0
+    for k in range(len(axs)):
+        axs[k][0,0].set_title(labels[ct],loc='left')
+        ct += 1
+                              
+        axs[k][0,1].set_title(labels[ct],loc='left')
+        ct += 1
+
+    # fix title with parameter values
+    nr1,nc1 = axs[0].shape
+    for k in range(len(axs)):
+        for j in range(nc1):
+            ti1 = axs[k][0,j].get_title()
+            ti1 += str(pl_list[k][0])+':'+str(pl_list[k][1])
+            #t1 += r', $\varepsilon='+str(e_list[k])+'$'
+            ti1 += r', $\delta = '+str(d_list[k][j])+'$'
+            
+            axs[k][0,j].set_title(ti1)
+
+    
+    """
     return fig
 
 
@@ -2224,8 +2292,10 @@ def main():
         #(traj_thal2,[2048],['figs/f_traj_thal2.pdf','figs/f_traj_thal2.png']),
         #(traj_gwt,[2048],['figs/f_traj_gwt.pdf','figs/f_traj_gwt.png']),
 
-        (bif1d_cgl1,[],['figs/f_bif1d_cgl1.pdf']),
+        #(bif1d_cgl1,[],['figs/f_bif1d_cgl1.pdf']),
         #(bif1d_thal1,[],['figs/f_bif1d_thal1.pdf']),
+        
+        (bif2d_cgl1,[],['figs/f_bif2d_cgl1.pdf']),
 
         #(bif_thal2_11,[2048],['figs/f_bif1d_thal2_11.pdf']),
         #(bif_thal2_12,[2048],['figs/f_bif1d_thal2_12.pdf']),
