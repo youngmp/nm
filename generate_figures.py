@@ -219,6 +219,71 @@ def forcing_fn():
     return fig
 
 
+kws_text = {'ha':'center','va':'center','zorder':10}
+kws_ins_ticks = {'bottom':False,'left':False,'labelleft':False,'labelbottom':False}
+kws_ins = {'width':'100%','height':'100%'}
+
+def tongues_cgl1():
+    """
+    2 parameter bifurcation data is from ./xpp/cgl1_f_h*.ode
+    Note that these diagrams were modified after exporting from XPP,
+    specifically in the order of the data, so that they could be
+    more easily plotted.
+
+    See ./bifdat_2par/reorder.ipynb for more details on what was
+    included and excluded.
+    """
+
+    pl_list = [(1,1),(2,1),(3,1),(4,1)]
+    
+    fig, axs = plt.subplots(2,2,figsize=(8,6))
+    axs = axs.flatten()
+
+    dir = './bifdat_2par/'
+
+    ############### 1:1 (top left)
+    fname = dir + 'cgl1_f_h11_2par_fixed.dat'
+    dat = np.loadtxt(fname)
+
+    axs[0].plot(dat[:,0],dat[:,1])
+    axs[0].set_xlim(dat[:,0][0],dat[:,0][-1])
+    axs[0].set_ylim(0,dat[:,1][-1])
+
+    axs[0].text(.4,.75,'Locking',transform=axs[0].transAxes,**kws_text)
+    axs[0].text(.75,.25,'Drift',transform=axs[0].transAxes,**kws_text)
+    axs[0].text(.15,.25,'Drift',transform=axs[0].transAxes,**kws_text)
+
+    # insets
+    axins1 = inset_axes(axs[0],bbox_to_anchor=(.1,.1,.2,.2),
+                        bbox_transform=axs[0].transAxes,**kws_ins)
+    axins1.tick_params(**kws_ins_ticks)
+
+    
+
+    ############### 2:1 (top right)
+
+    ############### 3:1 (bottom left)
+
+    ############### 4:1 (bottom right)
+
+    for k in range(len(axs)):
+        axs[k].set_xlabel(r'$\delta$',labelpad=0)
+        axs[k].set_ylabel(r'$\varepsilon$',labelpad=0)
+
+    # set title
+    for k,ax in enumerate(axs):
+        ax.set_title(labels[k],loc='left')
+
+        ti1 = ax.get_title()
+        ti1 += str(pl_list[k][0])+':'+str(pl_list[k][1])
+        
+        ax.set_title(ti1)
+
+
+    plt.tight_layout()
+    return fig
+
+
 def load_tongue(n,m,pd1,pd2,kws1,kws2,model_name='cglf0',dir1='',
                 recompute=False,dlo=-17,dhi=3,Nd=30):
     """
@@ -1020,100 +1085,6 @@ def fr_cgl(recompute=False):
         
     return fig
 
-def load_tongue(system1,pl_list,exponents,mode='1d',
-                data_dir='fr',recompute=False):
-    """
-    load or generate solution
-    """
-
-    if not(os.path.isdir(data_dir)):
-        os.mkdir(data_dir)
-        
-    ratio = str(pl_list[0])+str(pl_list[1])
-
-    raw = ('{}/tongue{}_{}_ratio={}_ex0={}_exf={}.txt')
-    fpars = [data_dir,mode,system1.model_name,ratio,exponents[0],exponents[-1]]
-    fname = raw.format(*fpars)
-    file_dne  = not(os.path.isfile(fname))
-
-    if file_dne or recompute:
-        a = nmc(system1,None,
-                _n=('om0',pl_list[0]),
-                _m=('om1',pl_list[1]),NH=300)
-        
-        d1 = list(-2**exponents[::-1]);d2 = list(2**exponents)
-        dvals = np.array(d1+[0]+d2)
-
-        if mode in ['1d',1]:
-            d2d,v2d = get_tongue_1d(dvals,a,deps=.01,max_eps=.5)
-        elif mode in ['2d',2]:
-            d2d,v2d = get_tongue_2d(dvals,a,deps=.01,max_eps=.5)
-        else:
-            raise ValueError('Invalid mode '+str(mode))
-        
-        data = np.zeros([len(d2d),2])
-        data[:,0] = d2d;data[:,1] = v2d
-        
-        np.savetxt(fname,data)
-        
-    else:
-        data = np.loadtxt(fname)
-
-    return data[:,0],data[:,1]
-
-
-def tongues_cgl():
-    kw_cgl = copy.deepcopy(kw_cgl_template)
-    kw_cgl['rhs'] = c1.rhs_old2
-     
-    system1 = rsp(**{'pardict':pd_cgl_template,**kw_cgl})
-    pl_list = [(1,1),(2,1),(3,1),(4,1)]
-    
-    fig,axs = plt.subplots(1,1,figsize=(8,2))
-
-    for k in range(len(pl_list)):
-
-        exps = np.linspace(-15,0,50,endpoint=False)
-        d1 = list(-2**exps[::-1]);d2 = list(2**exps)
-        dvals = np.array(d1+[0]+d2)
-
-        d1d,v1d = load_tongue(system1,pl_list[k],exps,mode=1)
-        d2d,v2d = load_tongue(system1,pl_list[k],exps[::5],mode=2)
-
-        x2d = pl_list[k][0]/(pl_list[k][1]+d2d)
-        x1d = pl_list[k][0]/(pl_list[k][1]+d1d)
-        axs.plot(x2d,v2d,color='tab:blue',alpha=.75)
-        axs.plot(x1d,v1d,color='tab:red',alpha=.75,ls='--')
-
-    # inset for 4:1
-    axins = axs.inset_axes([.7,.2,.2,.7],
-                           xlim=(4-.01,4+.007),
-                           ylim=(0,.14))
-
-    axins.plot(x2d,v2d,color='tab:blue',alpha=.75)
-    axins.plot(x1d,v1d,color='tab:red',alpha=.75,ls='--')
-    axins.tick_params(labelbottom=False,labelleft=False,
-                      bottom=False,left=False)
-    
-    _,cc = axs.indicate_inset_zoom(axins)
-    cc[0].set_visible(True)
-    cc[1].set_visible(True)
-    cc[2].set_visible(True)
-    cc[3].set_visible(True)
-    #plt.show()
-
-    axs.set_xlabel(r'$\omega_X/(\omega_Y+\delta)$')
-    axs.set_ylabel(r'$\varepsilon$')
-    
-
-    axs.set_xticks([1/1,2/1,3/1,4/1])
-    axs.set_xticklabels(['$1{:}1$','$2{:}1$','$3{:}1$','$4{:}1$'])
-    axs.set_xlim(.8,4.1)
-    axs.set_ylim(-.01,0.3)
-
-    plt.tight_layout()
-
-    return fig
 
 
 def fr_thal(recompute=False):
@@ -1375,74 +1346,6 @@ def bif1d_cgl1():
 
 
 
-def bif2d_cgl1():
-    
-    kw_cgl = copy.deepcopy(kw_cgl_template)
-    kw_cgl['rhs'] = c1.rhs_old2
-    system1 = rsp(**{'pardict':pd_cgl_template,**kw_cgl})
-
-    pl_list = [(1,1),(2,1),(3,1),(4,1)]
-    #e_list = [(.1,.1),(.1,.1),(.1,.1),(.05,.05)]
-    #d_list = [(.01,.04),(.01,.025),(.001,.008),(.0001,.0007)]
-    init_list = [1,1,.5,.5]
-    xlims = [(0,.295),(0,.295),(0,.295),(0,.145)]
-
-    full_rhs = _full_cgl1
-    fig,axs = _setup_bif_plot(labels=False,hspace=.07)
-
-    ############### 1:1 (top left)
-
-    ############### 2:1 (top right)
-
-    ############### 3:1 (bottom left)
-
-    ############### 4:1 (bottom right)
-
-    """
-    # mark eps values
-    for k in range(4):
-        
-        for j in range(1):
-            argt = {'ls':'--','color':'gray','lw':1,'clip_on':True}
-            axs[k][j,0].axvline(e_list[k][0],-.05,1.05,**argt)
-            axs[k][j,1].axvline(e_list[k][1],-.05,1.05,**argt)
-    
-    for i in range(len(axs)):
-        for j in range(1):
-            axs[i][j,0].set_ylabel(r'$\phi$',labelpad=0)
-            for k in range(2):
-                axs[i][j,k].set_ylim(-.1,2*np.pi+.1)
-                axs[i][j,k].set_xlim(*xlims[i])
-                                
-                axs[i][j,k].set_yticks([0,2*np.pi])
-                axs[i][j,k].set_yticklabels(pi_label_short)
-
-        for j in range(2):
-            axs[i][-1,j].set_xlabel(r'$\varepsilon$',labelpad=0)
-
-    # set title
-    ct = 0
-    for k in range(len(axs)):
-        axs[k][0,0].set_title(labels[ct],loc='left')
-        ct += 1
-                              
-        axs[k][0,1].set_title(labels[ct],loc='left')
-        ct += 1
-
-    # fix title with parameter values
-    nr1,nc1 = axs[0].shape
-    for k in range(len(axs)):
-        for j in range(nc1):
-            ti1 = axs[k][0,j].get_title()
-            ti1 += str(pl_list[k][0])+':'+str(pl_list[k][1])
-            #t1 += r', $\varepsilon='+str(e_list[k])+'$'
-            ti1 += r', $\delta = '+str(d_list[k][j])+'$'
-            
-            axs[k][0,j].set_title(ti1)
-
-    
-    """
-    return fig
 
 
 
@@ -2284,7 +2187,7 @@ def main():
         #(fr_cgl,[],['figs/f_fr_cgl.pdf','figs/f_fr_cgl.png']),
         #(fr_thal,[],['figs/f_fr_thal.pdf','figs/f_fr_thal.png']),
         
-        #(tongues_cgl,[],['figs/f_tongues_cgl.pdf','figs/f_tongues_cgl.png']),
+        (tongues_cgl1,[],['figs/f_tongues_cgl.pdf','figs/f_tongues_cgl.png']),
         #(tongues_thal,[],['figs/f_tongues_thal.pdf','figs/f_tongues_thal.png']),
 
         #(traj_cgl1,[],['figs/f_traj_cgl1.pdf','figs/f_traj_cgl1.png']),
@@ -2295,7 +2198,7 @@ def main():
         #(bif1d_cgl1,[],['figs/f_bif1d_cgl1.pdf']),
         #(bif1d_thal1,[],['figs/f_bif1d_thal1.pdf']),
         
-        (bif2d_cgl1,[],['figs/f_bif2d_cgl1.pdf']),
+        #(bif2d_cgl1,[],['figs/f_bif2d_cgl1.pdf']),
 
         #(bif_thal2_11,[2048],['figs/f_bif1d_thal2_11.pdf']),
         #(bif_thal2_12,[2048],['figs/f_bif1d_thal2_12.pdf']),
