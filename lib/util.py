@@ -437,20 +437,17 @@ def get_period_all(sol,idx:int=0,prominence:float=.25,
 
     # start with the max idx after 50% of the simulation as a starting point.
     n_half = int(len(peak_idxs)/2)
-
+    
     # get sorted indices of peak values
     peak_idxs_sorted = np.argsort(sol.y.T[peak_idxs[n_half:],idx])[::-1]
 
     # avoids getting a peak at zero or last index and having issues with opt.
-    if peak_idxs_sorted[0] in [0,1,2,3,
-                               len(peak_idxs_sorted)-1,
-                               len(peak_idxs_sorted)-2,
-                               len(peak_idxs_sorted)-3,
-                               len(peak_idxs_sorted)-4]:
-        idx_temp = peak_idxs_sorted[4]
-    else:
-        idx_temp = peak_idxs_sorted[0]
-
+    
+    choice = 0
+    idx_temp = peak_idxs_sorted[choice]
+    while idx_temp in [0,n_half-1,n_half-2,n_half-3,n_half-4]:
+        choice += 1
+        idx_temp = peak_idxs_sorted[choice]
 
     # the max idx is taken to be at the largest of all peaks
     # also get next n peaks
@@ -487,7 +484,7 @@ def get_period_all(sol,idx:int=0,prominence:float=.25,
 
 
 def get_phase_diff_f(rhs,phi0,a,eps,del1,u_sign:int=-1,
-                     max_time=3000,prominence=.1):
+                     max_time=500,prominence=.1):
     """
     find initial condition on limit cycle. For forced systems only.
     does not extract phase, only state variables and period.
@@ -501,14 +498,10 @@ def get_phase_diff_f(rhs,phi0,a,eps,del1,u_sign:int=-1,
     
     # run for a while and get period
     t = np.arange(0,max_time,.01)
-    sol = solve_ivp(rhs,[0,max_time],init[:-1],
-                    args=(a,eps,del1),t_eval=t,
+    sol = solve_ivp(rhs,[0,max_time],init[:-1],args=(a,eps,del1),t_eval=t,
                     **kw_bif)
-
-    u_temp = a.system1.forcing_fn(t*(a._m[1]+del1))
     
-    # get period estimate
-    
+    # get period estimate using original system
     period_est1,time_est1 = get_period(sol,idx_shift=0)
     period_est2,time_est2 = get_period(sol,idx_shift=1)
 
@@ -519,21 +512,19 @@ def get_phase_diff_f(rhs,phi0,a,eps,del1,u_sign:int=-1,
         period_est = period_est2
         time_est = time_est2
     
+    peak_idxs1 = sp.signal.find_peaks(sol.y.T[:,0],prominence=prominence)[0]
 
-    peak_idxs1 = sp.signal.find_peaks(sol.y.T[:,0],
-                                      prominence=prominence)[0]
-    peak_idxs2 = sp.signal.find_peaks(-u_temp)[0]
+    # phase zero of the forcing function starts at time zero
+    # so this part is trivially easy to compute.
+    # take -abs(mod(sol.t,2*pi) - 2*pi). then peaks will be at zeros.
+    peaks_at_zero_phase = -abs(mod(sol.t,2*pi) - 2*pi)
+    
+    peak_idxs2 = sp.signal.find_peaks(peaks_at_zero_phase)[0]
 
     if len(peak_idxs1) > len(peak_idxs2):
         peak_idxs1 = peak_idxs1[:len(peak_idxs2)]
     else:
         peak_idxs2 = peak_idxs2[:len(peak_idxs1)]
-
-    #tp,fp = get_phase(t,sol.y.T,skipn=100,system1=a.system1)
-    
-    #fp2 = (t[peak_idxs2]-a.om*t[peak_idxs1])[-1]
-    #phi = np.mod(2*np.pi*fp2/(period_est),2*np.pi)
-
 
     # get initial condition at zero phase of forcing function
     def u_min(t):
@@ -555,7 +546,7 @@ def get_phase_diff_f(rhs,phi0,a,eps,del1,u_sign:int=-1,
     print('times full vs force',time_est,res1.x,phis,'eps',eps,'per',period_est)
 
     
-    if False:
+    if True:
 
         fig,axs = plt.subplots(3,1,figsize=(4,2))
 
@@ -587,56 +578,43 @@ def get_phase_diff_f(rhs,phi0,a,eps,del1,u_sign:int=-1,
     return np.asarray(phis)
 
 
-def get_phase_diff_f_v2(rhs,phi0,a,eps,del1,u_sign:int=-1,max_time=3000):
+def get_phase_diff_f_v2(rhs,phi0,a,eps,del1,max_time=500):
     """
     get phase difference given phase-locking for a forced system.
 
     rhs: right-hand side of full system
     phi0: initial phase of full system
     
-    u_sign: simple way to make sure that phase zero starts at appropriate
-    place for certain forcing functions.
     """
     
-    init1 = list(a.system1.lc['dat'][int(phi0*a.system1.TN/(2*np.pi)),:])
-    init = np.array(init1+[2*np.pi])
+    init = list(a.system1.lc['dat'][int(phi0*a.system1.TN/(2*np.pi)),:])
+    #init = np.array(init1+[2*np.pi])
     
     # run for a while and get period
     t = np.arange(0,max_time,.01)
-    sol = solve_ivp(rhs,[0,max_time],init[:-1],args=(a,eps,del1),
-                    t_eval=t,**kw_bif)
+    sol = solve_ivp(rhs,[0,max_time],init,args=(a,eps,del1),t_eval=t,**kw_bif)
 
-    # generate forcing time series
-    u_temp = a.system1.forcing_fn(t*(a._m[1]+del1))
     
     # get period estimates
     Tlist = get_period_all(sol,n=a._n[1])
     print('eps=',eps,'; Tlist=',Tlist)
 
-    # get initial condition at zero phase of forcing function
-    def u_min(t):
-        return a.system1.forcing_fn(t*(a._m[1]+del1))
-
-
-    phis = []
-
-    # pick the peak amplitude as a starting point
-    time_est = Tlist[0][1]
-    period_est = Tlist[0][0]
-    bounds1 = [time_est-period_est*a._n[1]/a._m[1]/2,
-               time_est+period_est*a._n[1]/a._m[1]/2]
-
-    res1 = sp.optimize.minimize_scalar(u_min,bounds=bounds1)
-
     total_period = 0
     for i in range(len(Tlist)):
         total_period += Tlist[i][0]
 
+    # since the forcing phase always starts with zero at time zero
+    # and does not change over time (excxept for delta)
+    # we can just take the times of the peaks of the full model
+    # mod 2pi+delta.
+
     # phase diff for each peak-to-peak period
+
+    phis = []
     for (period_est,time_est) in Tlist:
 
         # diff taken in time not phase, so order is reversed.
-        phi = np.mod(a._n[1]*2*np.pi*(res1.x - time_est)/total_period,2*np.pi)
+        phi = np.mod(a._n[1]*2*np.pi*(-time_est)/total_period,2*np.pi)
 
         phis.append(phi)
 
@@ -645,13 +623,16 @@ def get_phase_diff_f_v2(rhs,phi0,a,eps,del1,u_sign:int=-1,max_time=3000):
 
 
 
-def bif1d(a,eps,del1,domain,rhs=_redu_c):
+def bif1d(a,eps,del1,domain,rhs=_redu_c,miter=None):
     """
     for coupling only
     gets stable and unstable points for a given epsilon and delta
     """
 
-    y = rhs(0,domain,a,eps,del1)
+    if miter is None:
+        y = rhs(0,domain,a,eps,del1)
+    else:
+        y = rhs(0,domain,a,eps,del1,miter)
             
     # get all zeros
     z1 = domain[1:][(y[1:]>0)*(y[:-1]<=0)]
