@@ -118,6 +118,108 @@ def rhs_old2(t,z,pdict,option='value',idx=''):
                                   C*sig*y*(1-R2)+x*(C*(1+rho*(R2-1)))])
 
 
+def rhs_aut(t,z,pdict,option='value',idx=''):
+    """
+    Right-hand side of the Complex Ginzburgh-Landau (CGL) model from
+    Wilson and Ermentrout RSTA 2019 
+
+    Parameters
+
+        t : float or sympy object.
+            time
+        z : array or list of floats or sympy objects.
+            state variables of the cgl model, x,y,wc
+        pdict : dict of flots or sympy objects.
+            parameter dictionary pdict[key], val. key is always a string
+            of the parameter. val is either the parameter value (float) or 
+            the symbolic version of the parameter key.
+        option : string.
+            Set to 'val' when inputs, t, z, pdict are floats. Set to
+            'sym' when inputs t, z, pdict are sympy objects. The default
+            is 'val'.
+
+    Returns
+
+        numpy array or sympy Matrix
+            returns numpy array if option == 'val'
+            returns sympy Matrix if option == 'sym'
+
+    """
+    
+    if option in ['val','value']:
+        exp = np.exp
+    elif option in ['sym','symbolic']:
+        exp = sym.exp
+
+    idx = str(idx)
+    x,y,s = z
+
+    R2 = x**2 + y**2
+    mu = pdict['mu'+idx];sig = pdict['sig'+idx];rho = pdict['rho'+idx]
+    omc = pdict['om'+idx]
+    om_fix = pdict['om_fix'+idx]
+
+    if option in ['val','value']:
+        C = 1#2*np.pi
+        return om_fix*omc*np.array([C*sig*x*(1-R2)-y*(C*(1+rho*(R2-1))),
+                                    C*sig*y*(1-R2)+x*(C*(1+rho*(R2-1))),
+                                    1])
+    
+    elif option in ['sym','symbolic']:
+        C = 1#2*sym.pi
+        return om_fix*omc*Matrix([C*sig*x*(1-R2)-y*(C*(1+rho*(R2-1))),
+                                  C*sig*y*(1-R2)+x*(C*(1+rho*(R2-1))),
+                                  1])
+
+    
+
+def rhs_old3(t,z,pdict,option='value',idx=''):
+    """
+    Right-hand side of the Complex Ginzburgh-Landau (CGL) model from
+    Wilson and Ermentrout RSTA 2019 
+
+    Parameters
+
+        t : float or sympy object.
+            time
+        z : array or list of floats or sympy objects.
+            state variables of the cgl model, x,y,wc
+        pdict : dict of flots or sympy objects.
+            parameter dictionary pdict[key], val. key is always a string
+            of the parameter. val is either the parameter value (float) or 
+            the symbolic version of the parameter key.
+        option : string.
+            Set to 'val' when inputs, t, z, pdict are floats. Set to
+            'sym' when inputs t, z, pdict are sympy objects. The default
+            is 'val'.
+
+    Returns
+
+        numpy array or sympy Matrix
+            returns numpy array if option == 'val'
+            returns sympy Matrix if option == 'sym'
+
+    """
+    
+    if option in ['val','value']:
+        exp = np.exp
+    elif option in ['sym','symbolic']:
+        exp = sym.exp
+
+    idx = str(idx)
+    x,y = z
+    
+    R2 = x**2 + y**2
+    q = pdict['q'+idx]
+    omc = pdict['om'+idx]
+    om_fix = pdict['om_fix'+idx]
+
+    if option in ['val','value']:
+        return om_fix*omc*np.array([x*(1-R2)-q*R2*y,y*(1-R2)+q*R2*x])
+    elif option in ['sym','symbolic']:
+        return om_fix*omc*Matrix([x*(1-R2)-q*R2*y,y*(1-R2)+q*R2*x])
+
+    
 def rhs_cgl_old(t,z,pdict,option='value',idx=''):
     """
     Right-hand side of the Complex Ginzburgh-Landau (CGL) model from
@@ -172,16 +274,15 @@ def ff(t):
     
 def main():
 
-    pd1 = {'sig':.08,'rho':.12,'mu':1,
-           'om':1,'om_fix':1}
+    pd1 = {'sig':.08,'rho':.12,'mu':1,'om':1,'om_fix':1}
     
     system1 = rsp(var_names=['x','y'],
-                  pardict=pd1,rhs=rhs,
+                  pardict=pd1,rhs=rhs_old2,
                   init=np.array([1,0,2*np.pi]),
                   TN=2000,
                   idx=0,
                   model_name='cglf0',
-                  forcing_fn=ff,
+                  forcing_fn=[ff,ff], #starts order eps
                   
                   recompute_list=[],
                   g_forward=False,
@@ -190,12 +291,11 @@ def main():
                   i_bad_dx=[False,True,False,False],
                   max_iter=100,
                   rel_tol=1e-9,
-                  trunc_order=4)
+                  trunc_order=2)
     
     a = nm(system1,None,
            #recompute_list=recompute_list,
-           _n=('om0',1),_m=('om1',1),
-           NP=200,NH=200)
+           _n=('om0',1),_m=('om1',1),NH=200)
 
     
     
