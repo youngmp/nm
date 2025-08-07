@@ -129,22 +129,20 @@ class nmCoupling(object):
                  log_level='CRITICAL',log_file='log_nm.log',
                  save_fig=False,
                  pfactor=None,
-                 
                  recompute_list=[],
-                 load_only_expansions=False,
-                 del1=0,
-                 iso_mode=False,
-                 p_del=False):
+                 
+                 het_coeffs = [],
+                 ):
 
         """
-        iso_mode: True loads only isostables, no p_i or H functions
         N=2 only.
-        Reserved names: ...        
+        Reserved names: ...
+        het_coeffs: for heterogeneous coefficients. index 0 is order eps, then eps^2 etc.
         """
 
-        self.p_del = p_del
-        self.iso_mode = iso_mode
-        self.load_only_expansions = load_only_expansions
+        print('Initializing {}{} Coupling...'.format(_n[1],_m[1]))
+
+        self.het_coeffs = het_coeffs
         self.save_fig = save_fig
         self.pfactor = pfactor
 
@@ -157,9 +155,13 @@ class nmCoupling(object):
 
         # ensures het. term carries through isostable calc.
         # constant het. only.
-        self.del1 = del1
-        system1.pardict['del'+str(system1.idx)] = del1
-        system1.rule_par['del'+str(system1.idx)] = del1
+        #self.del1 = del1
+        #system1.pardict['del'+str(system1.idx)] = del1
+        #system1.rule_par['del'+str(system1.idx)] = del1
+
+        system1.pardict['del1'] = 0
+        system1.rule_par['del1'] = 0
+        system1.pardict_sym['del1'] = 0
         
         assert(type(_n) is tuple);assert(type(_m) is tuple)
         #assert(_n[0] in system1.pardict);assert(_m[0] in system2.pardict)
@@ -187,6 +189,7 @@ class nmCoupling(object):
         
         self.ths = symbols(ths_str,real=True)
         self.psis = symbols(psis_str,real=True)
+        self.b = symbols('b',real=True)
 
         # discretization for p_X,p_Y
         self.NP = NH
@@ -227,11 +230,25 @@ class nmCoupling(object):
 
         system1.h['dat']={};system1.h['imp']={};system1.h['lam']={}
         system1.h['sym']={};system1.p['dat']={};system1.p['imp']={}
-        system1.p['lam']={};system1.p['sym']={}
+        system1.p['lam']={};system1.p['sym']={};
 
-        system1.p['dat_del']={};system1.p['imp_del']={}
-        system1.p['lam_del']={};system1.h['dat_del']={};
-        system1.h['imp_del']={};system1.h['lam_del']={}
+        system1.p['dat_hom']={};system1.p['dat_het']={}
+        system1.p['sym_hom']={};system1.p['sym_het']={}
+        system1.p['imp_hom']={};system1.p['imp_het']={}
+        system1.p['lam_hom']={};system1.p['lam_het']={}
+
+        system1.h['dat_hom']={};system1.h['dat_het']={}
+        system1.h['sym_hom']={};system1.h['sym_het']={}
+        system1.h['lam_hom']={};system1.h['lam_het']={}
+
+        system2.p['dat_hom']={};system2.p['dat_het']={}
+        system2.p['sym_hom']={};system2.p['sym_het']={}
+        system2.p['imp_hom']={};system2.p['imp_het']={}
+        system2.p['lam_hom']={};system2.p['lam_het']={}
+
+        system2.h['dat_hom']={};system2.h['dat_het']={}
+        system2.h['sym_hom']={};system2.h['sym_het']={}
+        system2.h['lam_hom']={};system2.h['lam_het']={}
 
         # global replacement rules based on system index
         system1.rule_lc={};system1.rule_g={};system1.rule_z={}
@@ -281,10 +298,6 @@ class nmCoupling(object):
         system2.h['dat']={};system2.h['imp']={};system2.h['lam']={}
         system2.h['sym']={};system2.p['dat']={};system2.p['imp']={}
         system2.p['lam']={};system2.p['sym']={}
-
-        system2.p['dat_del']={};system2.p['imp_del']={}
-        system2.p['lam_del']={};system2.h['dat_del']={}
-        system2.h['imp_del']={};system2.h['lam_del']={}
         
         for j,key in enumerate(system2.var_names):
             in1 = self.ths[system2.idx]
@@ -306,8 +319,8 @@ class nmCoupling(object):
         
         fnames.load_fnames_nm(system1,self)
         fnames.load_fnames_nm(system2,self)
-        slib.load_coupling_expansions(system1)
-        slib.load_coupling_expansions(system2)
+        slib.load_coupling_expansions(system1,True)
+        slib.load_coupling_expansions(system2,True)
 
         # need to unify these terms with forcing
         # define lambdified z and i in psi
@@ -340,9 +353,6 @@ class nmCoupling(object):
         self.load_coupling_response(system1)
         self.load_coupling_response(system2)
 
-        self.load_3d(system1,system2)
-        self.load_3d(system2,system1)
-
         # try loading h first. if fail, load everything else.
         file_dne = 0
         for k in range(system1.miter):
@@ -358,48 +368,52 @@ class nmCoupling(object):
            or 'p_'+system1.model_name in self.recompute_list\
            or 'p_'+system2.model_name in self.recompute_list:
 
-            #self.load_nicks(system1,system2)
+            # load odes for p_i
+            self.load_p_sym(system1)
+            self.load_p_sym(system2)
 
-            if not(self.iso_mode):
+            for i in range(system1.miter):
+                self.load_p_hom_het(system1,system2,i)
+                self.load_p_hom_het(system2,system1,i)
 
-                # load odes for p_i
-                self.load_p_sym(system1)
-                self.load_p_sym(system2)
+                #self.load_p(system1,system2,i)
+                #self.load_p(system2,system1,i)
 
-                for i in range(system1.miter):
+            self.load_h_sym(system1)
+            self.load_h_sym(system2)
 
-                    self.load_p(system1,system2,i)
-                    self.load_p(system2,system1,i)
+            for i in range(system1.miter):
+                self.load_h_hom_het(system1,system2,i)
+                self.load_h_hom_het(system2,system1,i)
+                
+                #self.load_h(system1,system2,i)
+                #self.load_h(system2,system1,i)
 
-
-                    if self.p_del and i <= 2:
-                        self.load_p_del(system1,system2,i)
-
-                # load het. terms (mean of z and i expansions in $\ve$).
-                #self.load_response_eps(system1)
-                #self.load_response_eps(system2)
+        else:
+            self.load_p_sym(system1)
+            self.load_p_sym(system2)
+            
+            for i in range(system1.miter):
+                self.load_p_hom_het(system1,system2,i)
+                self.load_p_hom_het(system2,system1,i)
 
                 self.load_h_sym(system1)
                 self.load_h_sym(system2)
+                
+                #self.load_h(system1,system2,i)
+                #self.load_h(system2,system1,i)
 
-                for i in range(system1.miter):
-                    self.load_h(system1,system2,i)
-                    self.load_h(system2,system1,i)
-
-        else:
-            for i in range(system1.miter):
-                self.load_h(system1,system2,i)
-                self.load_h(system2,system1,i)
+                self.load_h_hom_het(system1,system2,i)
+                self.load_h_hom_het(system2,system1,i)
             
     def _init_force(self,system1):
+        print('Warning: parameter del1 will be ignored')
         # system 2 should be forcing function
 
         self.pfactor = int((np.log(.02)/system1.kappa_val)/self._m[1])
 
         fnames.load_fnames_nm(system1,self)
-        slib.load_coupling_expansions(system1)
-
-        self.load_force(system1)
+        slib.load_coupling_expansions(system1,True)
 
         self.generate_p_force_sym()
         self.generate_h_force_sym()
@@ -409,173 +423,69 @@ class nmCoupling(object):
             self.load_p(system1,system1,k)
             self.load_h(system1,system1,k)
 
-    def load_force(self,system1):
-
-        in1 = [system1.t,system1.psi]
-        e1 = system1.z['vec_psi'][0].subs(system1.rule_z_local)
-        e2 = system1.i['vec_psi'][0].subs(system1.rule_i_local)
-
-        # \mathcal{Z} and \mathcal{I} expansions in psi
-        self.th_lam = lambdify(in1,e1)
-        self.ps_lam = lambdify(in1,e2)
-
-        u = self.system1.forcing_fn
-        
-        f1 = sym.symbols('f1')
-        u_imp = imp_fn('uf',u)
-
-        # symbolic h functions
-        hz0 = sym.Poly(system1.z['expand_'+system1.var_names[0]]*f1,system1.psi)
-        hi0 = sym.Poly(system1.i['expand_'+system1.var_names[0]]*f1,system1.psi)
-
-        hz2 = sym.Poly(system1.z['expand_'+system1.var_names[0]],system1.psi)
-        hi2 = sym.Poly(system1.i['expand_'+system1.var_names[0]],system1.psi)
-
-        ths = self.ths
-
-        # apply subs for each coefficient in powers of psi
-        hz2_cs = hz2.coeffs()[::-1]
-        hi2_cs = hi2.coeffs()[::-1]
-        
-        self.z_exp = []
-        self.i_exp = []
-        for i in range(len(hz2_cs)):
-            imp0 = hz2_cs[i].subs(system1.rule_z_local).subs(system1.t,ths[0])
-            lam0 = lambdify(ths[0],imp0)
-
-            self.z_exp.append(lam0)
-
-            imp0 = hi2_cs[i].subs(system1.rule_i_local).subs(system1.t,ths[0])
-            lam0 = lambdify(ths[0],imp0)
-            self.i_exp.append(lam0)
-        
-        hz0_cs = hz0.coeffs()[::-1]
-        self.hz0_lams = []
-
-        oms0 = system1.pardict_sym['om0']
-        oms1 = system1.pardict_sym['omf']
-        oms = oms0/oms1
-        
-        for i in range(len(hz0_cs)):
-            hz0_imp = hz0_cs[i].subs(system1.rule_z_local)
-            
-            in1 = ths[0]+oms*system1.t
-            hz0_imp = hz0_imp.subs(system1.t,in1)
-            hz0_imp = hz0_imp.subs(f1,u_imp(system1.t))
-            
-            hz0_imp = hz0_imp.subs(oms0,self._n[1])
-            hz0_imp = hz0_imp.subs(oms1,self._m[1])
-            
-            hz0_lam = lambdify([ths[0],system1.t],hz0_imp)
-            self.hz0_lams.append(hz0_lam)
-
-            if self.save_fig:
-                tt = np.linspace(0,2*np.pi)
-                X,Y = np.meshgrid(tt,tt,indexing='ij')
-                fig,axs = plt.subplots()
-                axs.imshow(hz0_lam(X,Y))
-                plt.savefig('figs_temp/hz0_lam_'+str(i)+'.png')
-
-        hi0_cs = hi0.coeffs()[::-1]
-        self.hi0_lams = []
-        
-        for i in range(len(hi0_cs)):
-            
-            hi0_imp = hi0_cs[i].subs(system1.rule_i_local)
-            hi0_imp = hi0_imp.subs(system1.t,ths[0]+oms*system1.t)
-            hi0_imp = hi0_imp.subs(f1,u_imp(system1.t))
-
-            hi0_imp = hi0_imp.subs(oms0,self._n[1])
-            hi0_imp = hi0_imp.subs(oms1,self._m[1])
-
-            hi0_lam = lambdify([ths[0],system1.t],hi0_imp)
-            self.hi0_lams.append(hi0_lam)
-
-            if self.save_fig:
-                tt = np.linspace(0,2*np.pi)
-                X,Y = np.meshgrid(tt,tt,indexing='ij')
-                fig,axs = plt.subplots()
-                axs.imshow(hi0_lam(X,Y))
-                nn = self._n[1]
-                mm = self._m[1]
-                axs.set_title('hi0_lam_'+str(i)\
-                            +'_'+str(nn)+str(mm))
-                
-                plt.savefig('figs_temp/hi0_lam_'+str(i)\
-                            +'_'+str(nn)+str(mm)+'.png')
-                plt.close()
-
-        s1,ds1 = np.linspace(0,2*np.pi,self.NH,retstep=True)
-        s2,ds2 = np.linspace(0,2*np.pi*self._m[1],self.NH,retstep=True)
-
-        self.hz_lam = []
-        self.hi_lam = []
-
-        for i in range(system1.miter):
-            solz = np.zeros(len(s1))
-            soli = np.zeros(len(s1))
-
-            for j in range(len(s2)):
-                solz[j] = np.sum(self.hz0_lams[i](s1[j],s2))
-                soli[j] = np.sum(self.hi0_lams[i](s1[j],s2))
-
-            solz *= ds2/(2*np.pi*self._m[1])
-            soli *= ds2/(2*np.pi*self._m[1])
-
-            fnz = interp1d(s1[0],s1[-2],ds1,solz[:-1],p=True,k=5)
-            fni = interp1d(s1[0],s1[-2],ds1,soli[:-1],p=True,k=5)
-
-            self.hz_lam.append(fnz)
-            self.hi_lam.append(fni)
-
-        #self.generate_p_force_sym()
-
-        
-        #data = self.generate_p_force(0)
-        
-        #self.generate_p_force(1)
-
-
     def generate_p_force_sym(self):
         # get expansion of $I$ in psi
         # substitute expansion of psi in eps
         # collect in powers of $\ve$.
 
-        f1 = sym.symbols('f1')
+        us = self.system1.forcing_fn
+        f1s = [sym.symbols('f'+str(i)) for i in range(1,len(us)+1)]
         first_var = self.system1.var_names[0]
+
+        u_expr = 0
+        eps = self.system1.eps
         
-        tmp = self.system1.i[first_var+'_eps']*self.system1.eps
+        for i in range(len(f1s)):
+            u_expr += eps**(i+1)*f1s[i]
+
+        # collect i terms in eps
+        tmp = self.system1.i[first_var+'_eps']*u_expr
         tmp = collect(tmp,self.system1.eps)
         tmp = collect(expand(tmp),self.system1.eps)
         
-        u = self.system1.forcing_fn
-        u_imp = imp_fn('uf',u)
+        
+        u_imps = []
+        for i in range(1,len(us)+1):
+            u_imp = imp_fn('f_imp'+str(i),us[i-1])
+            u_imps.append(u_imp)
 
-        rule = {**self.system1.rule_i,
-                **{f1:u_imp(self.system1.t)}}
+        u_rule = {f1s[i]:u_imps[i](self.ths[1]) for i in range(len(us))}
+
+        rule = {**self.system1.rule_i,**u_rule}
 
         for k in range(self.system1.miter):
-            self.system1.p['sym'][k] = tmp.coeff(self.system1.eps,k)
-            self.system1.p['sym'][k] *= u_imp(self.ths[1])
+            self.system1.p['sym'][k] = tmp.coeff(self.system1.eps,k).subs(rule)
 
     def generate_h_force_sym(self):
-        f1 = sym.symbols('f1')
 
+        us = self.system1.forcing_fn
+        f1s = [sym.symbols('f'+str(i)) for i in range(len(us))]
         first_var = self.system1.var_names[0]
-        tmp = self.system1.z[first_var+'_eps']
+
+        u_expr = 0
+        eps = self.system1.eps
+        
+        for i in range(len(f1s)):
+            u_expr += eps**i*f1s[i]
+
+        # collect z terms in eps
+        tmp = self.system1.z[first_var+'_eps']*u_expr
         tmp = collect(tmp,self.system1.eps)
         tmp = collect(expand(tmp),self.system1.eps)
-        
-        u = self.system1.forcing_fn
-        u_imp = imp_fn('uf',u)
 
-        rule = {**self.system1.rule_z,
-                **{f1:u_imp(self.system1.t)}}
+        u_imps = []
+        for i in range(1,len(us)+1):
+            u_imp = imp_fn('f_imp'+str(i),us[i-1])
+            u_imps.append(u_imp)
+
+        u_rule = {f1s[i]:u_imps[i](self.ths[1]) for i in range(len(us))}
+
+        rule = {**self.system1.rule_z,**u_rule}
 
         for k in range(self.system1.miter):
-            self.system1.h['sym'][k] = tmp.coeff(self.system1.eps,k)
-            self.system1.h['sym'][k] *= u_imp(self.ths[1])
+            self.system1.h['sym'][k] = tmp.coeff(self.system1.eps,k).subs(rule)
 
+            
     def load_k_sym(self,system1,system2):
         
         """
@@ -598,7 +508,8 @@ class nmCoupling(object):
         system1.G['sym_psi'] = {}
         system1.K['sym_psi'] = {}
         if 'k_'+system1.model_name in self.recompute_list or files_dne:
-            logging.info('* Computing G symbolic...')
+            #logging.info('* Computing G symbolic...')
+            print('* Computing G symbolic...')
 
             rule_trunc = {}
             for k in range(system1.miter,system1.miter+500):
@@ -645,8 +556,25 @@ class nmCoupling(object):
 
         system1.G['vec'] = sym.zeros(system1.dim,1)
 
+        
+
         for i,key in enumerate(system1.var_names):
             system1.G['vec'][i] = [system1.G['sym'][key]]
+
+        # substitute explicit het terms.
+        # take del0 and expand it according to het_coeffs
+        # del0 -> del0*het_coeffs[0] + eps*del0**2*het_coeffs[1] + ...
+        tot = 0
+        b = self.system1.pardict_sym['del0'] # alias
+        e = self.system1.eps
+        for i in range(len(self.het_coeffs)):
+            tot += e**i*b**(i+1)*self.het_coeffs[i]
+            
+        rule_del0 = {self.system1.pardict_sym['del0']:tot}
+        
+        system1.G['vec'][0] = system1.G['vec'][0].subs(rule_del0)
+
+        
 
     def generate_k_sym(self,system1,system2):
         """
@@ -663,8 +591,7 @@ class nmCoupling(object):
         dz = sym.Matrix(system1.dsyms + system2.dsyms)
 
         # get full coupling term for given oscillator
-        system1.G['sym_fn'] = sym.flatten(fn(z,psym,option='sym',
-                                             idx=system1.idx))
+        system1.G['sym_fn'] = sym.flatten(fn(z,psym,option='sym',idx=system1.idx))
 
         if self.forcing:
             assert(z[-1,0] == system2.syms[0])
@@ -720,14 +647,14 @@ class nmCoupling(object):
         # replace psi with psi_1    
         for key in system1.var_names:
             d1 = system1.G['sym_psi'][key].subs(rule_psi)
-            d1 = d1 = d1.subs({system2.psi:self.psis[system2.idx]})            
+            d1 = d1.subs({system2.psi:self.psis[system2.idx]})            
             system1.G['sym_psi'][key] = d1
 
     def load_coupling_response(self,system):
         """
         Construct the truncated phase and isostable response functions
         needed in the averaging step.
-        Assume coupling function only nontrivial in first coordinate.
+        Assume coupling function nonzero only in first coordinate.
         """
 
         file_dne = not(os.path.isfile(system.G['fname_gz']))
@@ -766,59 +693,6 @@ class nmCoupling(object):
             system.gz = dill.load(open(system.G['fname_gz'],'rb'))
             system.gi = dill.load(open(system.G['fname_gi'],'rb'))
 
-    def load_3d(self,system1,system2):
-        """
-        get functions for use in 3d reduction
-        """
-        
-        s1 = system1;s2 = system2
-        rule_temp1 = {**s1.rule_g_local,**s1.rule_lc_local,
-                      **s1.rule_z_local,**s1.rule_i_local,
-                      **s1.rule_par}
-        rule_temp2 = {**s2.rule_g_local,**s2.rule_lc_local,
-                      **s2.rule_z_local,**s2.rule_i_local,
-                      **s2.rule_par}
-
-        d1 = s1.gz.subs(rule_temp1)
-        d1 = d1.subs({s1.t:self.ths[system1.idx]})
-        d1 = d1.subs(rule_temp2)
-        d1 = d1.subs({s2.t:self.ths[system2.idx]})
-
-        d2 = s1.gi.subs(rule_temp1)
-        d2 = d2.subs({s1.t:self.ths[system1.idx]})
-        d2 = d2.subs(rule_temp2)
-        d2 = d2.subs({s2.t:self.ths[system2.idx]})
-
-        s1.gz_lam = lambdify([*self.ths,*self.psis],d1)
-        s1.gi_lam = lambdify([*self.ths,*self.psis],d2)
-
-    def load_nicks(self,system1,system2):
-        """
-        compute the H functions form Nicks et al 2024
-        just up to psi^2
-        """
-        s1 = system1;s2 = system2
-        rule_temp1 = {**s1.rule_g_local,**s1.rule_lc_local,
-                      **s1.rule_z_local,**s1.rule_i_local,
-                      **s1.rule_par}
-        rule_temp2 = {**s2.rule_g_local,**s2.rule_lc_local,
-                      **s2.rule_z_local,**s2.rule_i_local,
-                      **s2.rule_par}
-        
-        # lowest order
-        d1 = s1.gz_poly[0].subs(rule_temp1)
-        d1 = d1.subs({s1.t:self.ths[system1.idx]})
-        d1 = d1.subs(rule_temp2)
-        d1 = d1.subs({s2.t:self.ths[system2.idx]})
-
-        d2 = s1.gi_poly[0].subs(rule_temp1)
-        d2 = d2.subs({s1.t:self.ths[system1.idx]})
-        d2 = d2.subs(rule_temp2)
-        d2 = d2.subs({s2.t:self.ths[system2.idx]})
-
-        h1a_lam = lambdify(self.ths,d1)
-        
-        x = np.linspace(0,2*np.pi,100)
         
         
     def load_p_sym(self,system1):
@@ -827,6 +701,8 @@ class nmCoupling(object):
             
         to be solved using integrating factor meothod.        
         system*.p[k] is the forcing function for oscillator * of order k
+
+        note p is defined as Indexed('p_'+obj.model_name,k) in /lib/lib_sym.py
         """
 
         file_dne = not(os.path.isfile(system1.p['fname']))
@@ -861,18 +737,44 @@ class nmCoupling(object):
             print('* Loading p symbolic...')
             system1.p['sym'] = dill.load(open(system1.p['fname'],'rb'))
 
+        # hom het symbols
+        mname = system1.model_name
         
+        # construct sym hom
+        system1.p['sym_hom'] = {0:0}
+        for k in range(1,system1.miter):
+            system1.p['sym_hom'][k] = sym.IndexedBase('p_'+mname+'_hom')[k]
+
+        # construct sym het
+        system1.p['sym_het'] = {0:0}
+
+        # expansions will always be in del0, never in del1
+        b = self.system1.pardict_sym['del0']
+        for k in range(1,system1.miter):
+            tot = 0
+            for j in range(k):
+                tot += b**(j+1)*sym.IndexedBase('p_'+mname+'_het')[k,j+1]
+            system1.p['sym_het'][k] = tot
+
+        # create substitution rule for p_thal0_test[k] into explicit hom and het parts
+        system1.rule_p2het = {}
+
+        # note that it's possible for system2 to have het. terms even if del1 = 0
+        for k in range(1,system1.miter):
+            system1.rule_p2het[sym.Indexed('p_'+mname,k)] = system1.p['sym_hom'][k] + system1.p['sym_het'][k]
 
     def load_p(self,system1,system2,k):
         """
         These p functions are in terms of the fast phases, not slow phases.
+        
         """
 
         fname = system1.p['fnames_data'][k]
         file_dne = not(os.path.isfile(fname))
         
         if 'p_data_'+system1.model_name in self.recompute_list or file_dne:
-            p_data = self.generate_p(system1,system2,k)
+            expr = system1.p['sym'][k]
+            p_data = self.generate_p(system1,system2,expr,k)
             np.savetxt(system1.p['fnames_data'][k],p_data)
 
         else:
@@ -883,8 +785,7 @@ class nmCoupling(object):
         n=self._n[1];m=self._m[1]
         x=self.x;dx=self.dx
 
-        p_interp = interp2d([0,0],[self.T*n,self.T*m],[dx*n,dx*m],p_data,
-                            k=5,p=[True,True])
+        p_interp = interp2d([0,0],[self.T*n,self.T*m],[dx*n,dx*m],p_data,k=1,p=[True,True])
 
         ta = self.ths[0];tb = self.ths[1]
         name = 'p_'+system1.model_name+'_'+str(k)
@@ -916,7 +817,132 @@ class nmCoupling(object):
         system1.rule_p.update({sym.Indexed('p_'+system1.model_name,k):
                                system1.p['imp'][k](ta,tb)})
 
-    def generate_p(self,system1,system2,k):
+
+
+    def load_p_hom_het(self,system1,system2,k):
+        """
+        These p functions are in terms of the fast phases, not slow phases.
+
+        explicitly save homogeneous and heterogeneous parts of p functions.
+        
+        """
+
+        fname_hom = system1.p['fnames_data_hom'][k]
+        fname_hets = system1.p['fnames_data_het'][k]
+        
+        file_dne = not(os.path.isfile(fname_hom))
+        for j in range(len(fname_hets)):
+            file_dne += not(os.path.isfile(fname_hets[j]))
+
+        # rule to break up het. terms
+        rule = {**system1.rule_p2het,**system2.rule_p2het}
+
+        #print('rule in load p hom het',rule)
+
+        # alias
+        b = self.system1.pardict_sym['del0']
+        
+        if 'p_data_'+system1.model_name in self.recompute_list or file_dne:
+
+            # plug in explicit homogenous and heterogenous expansions
+
+            # hom.
+            expr = sym.expand(system1.p['sym'][k].subs(rule))
+            expr = sym.collect(expr,b)
+            expr_hom = expr.coeff(b,0)
+
+            # het terms
+            expr_hets = []
+            for j in range(k):
+                expr_het = expr.coeff(b,j+1)
+                expr_hets.append(expr_het)
+
+            #print('generating hom')
+            dat_hom = self.generate_p(system1,system2,expr_hom,k)
+
+            #print('expr_hets',expr_hets)
+
+            dat_hets = []
+            for j in range(k):
+                #print('generating het',j)
+                dat_het = self.generate_p(system1,system2,expr_hets[j],k)
+                dat_hets.append(dat_het)
+            
+            np.savetxt(system1.p['fnames_data_hom'][k],dat_hom)
+
+            for j in range(k):
+                np.savetxt(system1.p['fnames_data_het'][k][j],dat_hets[j])
+
+        else:
+            dat_hom = np.loadtxt(fname_hom)
+            dat_hets = []
+            for j in range(k):
+                dat_het = np.loadtxt(fname_hets[j])
+                dat_hets.append(dat_het)
+
+        system1.p['dat_hom'][k] = dat_hom
+        system1.p['dat_het'][k] = dat_hets
+
+        n=self._n[1];m=self._m[1]
+        x=self.x;dx=self.dx
+
+        interp_hom = interp2d([0,0],[self.T*n,self.T*m],[dx*n,dx*m],dat_hom,k=1,p=[True,True])
+
+        interp_hets = []
+        for j in range(k):
+            interp_het = interp2d([0,0],[self.T*n,self.T*m],[dx*n,dx*m],dat_hets[j],k=1,p=[True,True])
+            interp_hets.append(interp_het)
+
+        ta = self.ths[0];tb = self.ths[1]
+        name_hom = 'p_'+system1.model_name+'_hom'+str(k)
+        imp_hom = imp_fn(name_hom,self.fast_interp_lam(interp_hom))
+        lam_hom = lambdify(self.ths,imp_hom(ta,tb))
+
+        imp_hets = []
+        lam_hets = []
+
+        for j in range(k):
+            name_het = 'p_'+system1.model_name+'_het'+str(k)+str(j+1)
+            imp_het = imp_fn(name_het,self.fast_interp_lam(interp_hets[j]))
+            lam_het = lambdify(self.ths,imp_het(ta,tb))
+            imp_hets.append(imp_het)
+            lam_hets.append(lam_het)
+            
+        
+        if k == 0:
+            imp_hom = imp_fn('p_'+system1.model_name+'_hom0', lambda x: 0*x)
+            imp_hets = [imp_fn('p_'+system1.model_name+'_het00', lambda x: 0*x)]
+            system1.p['imp_hom'][k] = imp_hom
+            system1.p['lam_hom'][k] = 0
+
+            system1.p['imp_het'][k] = imp_hets
+            system1.p['lam_het'][k] = [0]
+            
+        else:
+            system1.p['imp_hom'][k] = imp_hom
+            system1.p['lam_hom'][k] = lam_hom
+
+            system1.p['imp_het'][k] = imp_hets
+            system1.p['lam_het'][k] = lam_hets
+
+        if self.save_fig:
+            
+            fig,axs = plt.subplots()
+            axs.imshow(p_data)
+            pname = 'figs_temp/p_'
+            pname += system1.model_name+str(k)
+            pname += '_'+str(n)+str(m)
+            pname += '.png'
+            plt.savefig(pname)
+            plt.close()
+
+        mname = system1.model_name
+        system1.rule_p.update({sym.Indexed('p_'+mname+'_hom',k):system1.p['imp_hom'][k](ta,tb)})
+        for j in range(len(system1.p['lam_het'][k])):
+            system1.rule_p.update({sym.IndexedBase('p_'+mname+'_het')[k,j+1]:system1.p['imp_het'][k][j](ta,tb)})
+
+        
+    def generate_p(self,system1,system2,expr,k):
         print('p order='+str(k))
 
         n = self._n[1];m = self._m[1]
@@ -933,20 +959,13 @@ class nmCoupling(object):
                 **system2.rule_par,**system1.rule_lc,**system2.rule_lc,
                 **system1.rule_i,**system2.rule_i,**system1.rule_g,
                 **system2.rule_g}
-        
-        if self.forcing:
-            # if forcing, set all delta to zero
-            rule['del0'] = 0
-            rule['del1'] = 0
-            imp0 = imp_fn('forcing',system2)
-            lam0 = lambdify(self.ths[1],imp0(self.ths[1]))
-            rule.update({system2.syms[0]:imp0(self.ths[1])})
 
-        #rule['del0'] *= 20
-        #rule['del1'] *= 20
-        #print('del vals',rule['del0'],rule['del1'])
+        rule.pop('del0',None)
+        #rule.pop('del1',None)
 
-        ph_imp1 = system1.p['sym'][k].subs(rule)
+        ph_imp1 = expr.subs(rule)
+
+        #print('ph_imp1',ph_imp1)
 
         if ph_imp1 == 0: # keep just in case
             return data
@@ -973,22 +992,7 @@ class nmCoupling(object):
             f1 = lam1(x[ll%NP]*n+self.om*sm,sm)
             f_in = fftw(f1)
             conv = ifftw(f_in*g_in).real
-            data[(a_i+ll)%(n*NP),a_i] = conv[-m*NP:]
-
-            if ll == 0 and False:
-                fig,axs = plt.subplots(3,1)
-                axs[0].plot(f1[-m*NP:])
-
-                sm2 = np.arange(0,4*np.pi,dx)
-                axs[0].scatter(np.arange(len(sm2)),lam1(0+sm2/2,sm2),s=1)
-                axs[1].plot(exp1)
-                axs[2].plot(conv[-m*NP:])
-                
-                axs[0].set_title('integrand 1')
-                axs[1].set_title('integrand 2')
-                axs[2].set_title('conv')
-                
-                plt.show()
+            data[(a_i+ll)%(n*NP),a_i] = conv[-m*(NP):]
 
         return fac*data*dx*m
     
@@ -1050,6 +1054,8 @@ class nmCoupling(object):
 
             logging.info('Oscillator '+system.model_name)
             v1 = system.z['vec']; v2 = system.G['vec']
+
+            #print('v1,v2',v1,v2)
                     
             tmp = v1.dot(v2)
             tmp = sym.expand(tmp,**self._expand_kws)
@@ -1061,10 +1067,12 @@ class nmCoupling(object):
             for k in range(system.miter):
                 system.h['sym'][k] = tmp.coeff(system.eps,k)
 
+                #print('\tidx,k,h sym',system.idx,k,system.h['sym'][k])
+
             dill.dump(system.h['sym'],open(fname,'wb'),recurse=True)
                 
         else:
-            logging.info('* Loading H symbolic...')
+            #logging.info('* Loading H symbolic...')
             print('* Loading H symbolic...')
             system.h['sym'] = dill.load(open(fname,'rb'))
 
@@ -1090,7 +1098,8 @@ class nmCoupling(object):
             logging.info(str1.format(system1.model_name,k))
             print(str1.format(system1.model_name,k))
 
-            h_data = self.generate_h(system1,system2,k)
+            expr = system1.h['sym'][k]
+            h_data = self.generate_h(system1,system2,expr,k)
             np.savetxt(system1.h['fnames_data'][k],h_data)
 
         else:
@@ -1104,12 +1113,8 @@ class nmCoupling(object):
         hodd = h_data[::-1] - h_data
 
         n=self._n[1];m=self._m[1]
-        #system1.h['lam'][k] = interpb(self.be,h_data,2*np.pi)
-        system1.h['lam'][k] = interp1d(0,self.T*n,self.dx,
-                                       h_data,p=True,k=5)
 
-        #system1.h['lam'][k] = interp1d(self.bn[0],self.bn[-1],self.dbn,
-        #                               h_data,p=True,k=5)
+        system1.h['lam'][k] = interp1d(0,self.T*n,self.dx,h_data,p=True,k=3)
 
         if self.save_fig:    
             fig,axs = plt.subplots(figsize=(6,2))
@@ -1128,31 +1133,109 @@ class nmCoupling(object):
             plt.savefig(pname)            
             plt.close()
 
+
+
+    def load_h_hom_het(self,system1,system2,k):
+        """
+        explicitly save homogeneous and heterogeneous parts of p functions.
+        """
+
+        fname_hom = system1.h['fnames_data_hom'][k]
+        fname_hets = system1.h['fnames_data_het'][k]
+
+        file_dne = not(os.path.isfile(fname_hom))
+        for j in range(len(fname_hets)):
+            file_dne += not(os.path.isfile(fname_hets[j]))
+
+        # rule to break up het. terms
+        rule = {**system1.rule_p2het,**system2.rule_p2het}
+
+        # alias
+        b = self.system1.pardict_sym['del0']
+
+        if 'h_data_'+system1.model_name in self.recompute_list or file_dne:
+            str1 = '* Computing H {}, order={}...'
+            print(str1.format(system1.model_name,k))
+
+            # plug in explicit homogenous and heterogenous expansions
+            expr = sym.expand(system1.h['sym'][k].subs(rule))
+            expr = sym.collect(expr,b)
+
+            #print('expr,h',system1.idx,expr)
+            expr_hom = expr.coeff(b,0)
+
+            expr_hets = []
+            for j in range(k+1):
                 
-    def generate_h(self,system1,system2,k):
+                expr_het = expr.coeff(b,j+1)
+                expr_hets.append(expr_het)
+                #print('expr_hets',expr_hets[j])
+
+            #print('dat hom')
+            dat_hom = self.generate_h(system1,system2,expr_hom,k)
+
+            dat_hets = []
+            for j in range(k+1):
+                #print('dat het',j)
+                
+                dat_het = self.generate_h(system1,system2,expr_hets[j],k)
+                dat_hets.append(dat_het)
+
+            np.savetxt(system1.h['fnames_data_hom'][k],dat_hom)
+
+            np.savetxt(system1.h['fnames_data_het'][k][j],dat_hets[j])
+            for j in range(k+1):
+                np.savetxt(system1.h['fnames_data_het'][k][j],dat_hets[j])
+
+
+        else:
+            str1 = '* Loading H {}, order={}...'
+            print(str1.format(system1.model_name,k))
+
+            # note that h filenmaes need to start with k+1 het. terms
+            dat_hom = np.loadtxt(fname_hom)
+
+            dat_hets = []
+            for j in range(k+1):
+                dat_het = np.loadtxt(fname_hets[j])
+                dat_hets.append(dat_het)
+
+        system1.h['dat_hom'][k] = dat_hom
+        system1.h['dat_het'][k] = dat_hets
+
+        n=self._n[1];m=self._m[1]
+
+        system1.h['lam_hom'][k] = interp1d(0,self.T*n,self.dx,dat_hom,p=True,k=3)
+
+        interp_hets = []
+        for j in range(k+1):
+            interp_het = interp1d(0,self.T*n,self.dx,dat_hets[j],p=True,k=3)
+            interp_hets.append(interp_het)
+
+        
+
+        system1.h['lam_het'][k] = interp_hets
+
+                
+    def generate_h(self,system1,system2,expr,k):
 
         rule = {**system1.rule_p,**system2.rule_p,**system1.rule_par,
                 **system2.rule_par,**system1.rule_lc,**system2.rule_lc,
                 **system1.rule_g,**system2.rule_g,**system1.rule_z,
                 **system2.rule_z,**system1.rule_i,**system2.rule_i}
 
-        print('system1.rule_p',system1.rule_p)
-        print('system2.rule_p',system2.rule_p)
+        #print('k,expr',k,expr)
+
+        if expr == 0:
+            return np.zeros(len(self.x))
         
-        if self.forcing:
-            rule['del0'] = 0
-            rule['del1'] = 0
-            imp0 = imp_fn('forcing',system2)
-            rule.update({system2.syms[0]:imp0(self.ths[1])})
-
-        h_lam = lambdify(self.ths,system1.h['sym'][k].subs(rule))
-
-        #rule['del0'] *= 20
-        #rule['del1'] *= 20
-        #print('h del vals',rule['del0'],rule['del1'])
+        h_lam = lambdify(self.ths,expr.subs(rule))
 
         x=self.x;dx=self.dx
         n=self._n[1];m=self._m[1]
+
+        #print('idx, expr in h:',system1.idx,expr)
+        #print('idx, imp in h:',system1.idx,expr.subs(rule))
         
         X,Y = np.meshgrid(x*n,x*m,indexing='ij')
         h_integrand = h_lam(X,Y)
@@ -1160,7 +1243,7 @@ class nmCoupling(object):
         # get only those in n:m indices
         # n*i,-m*i
         ft2_new = list([ft2[0,0]])
-        ft2_new += list(np.diag(np.flipud(ft2[1:,1:]))[::-1])
+        ft2_new += list(np.diag(np.fliplr(ft2[1:,1:])))
         ft2_new = np.asarray(ft2_new)
         ft2_new /= self.NH
 

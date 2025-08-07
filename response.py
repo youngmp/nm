@@ -629,7 +629,7 @@ class Response(object):
             else:
                 data = np.loadtxt(fname)
 
-            #data *= self.factor
+            data *= self.factor
     
             self.g['dat'].append(data)
             if self.save_fig:
@@ -746,7 +746,7 @@ class Response(object):
             else:
                 data = np.loadtxt(fname)
 
-            #data *= self.factor
+            data *= self.factor
 
             self.z['dat'].append(data)
             if self.save_fig:
@@ -858,7 +858,7 @@ class Response(object):
             else:
                 data = np.loadtxt(fname)
 
-            #data *= self.factor
+            data *= self.factor
 
             self.i['dat'].append(data)
 
