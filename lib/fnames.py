@@ -51,7 +51,10 @@ def load_fnames_response(obj,model_pars=''):
 
 
 def load_fnames_nm(system,obj,model_pars='',coupling_pars=''):
-
+    """
+    system.dir1 is unique to the model name, so a model index in the filename is not needed.
+    """
+    
     pars = (system.dir1,system.miter,obj.forcing)
     system.G['fname'] = '{}G_{}_f={}.d'.format(*pars)
     system.K['fname'] = '{}K_{}_f={}.d'.format(*pars)
@@ -66,14 +69,33 @@ def load_fnames_nm(system,obj,model_pars='',coupling_pars=''):
     system.G['fname_gi'] = '{}gi_{}_f={}.d'.format(*pars)
 
     fname_pars = (obj.NP,obj.NH,obj.pfactor,obj._n[1],obj._m[1],
-                  obj.forcing,obj.del1)
+                  obj.forcing)
     fname_pars2 = (obj.NP,obj.NH,obj.pfactor,obj._n[1],obj._m[1],
                   obj.forcing)
     
-    val = '{}p_data_ord={}_NP={}_NH={}_piter={}_n={}_m={}_f={}_de={}.txt'
+    val = '{}p_data_ord={}_NP={}_NH={}_piter={}_n={}_m={}_f={}.txt'
     system.p['fnames_data'] = [val.format(system.dir1,k,*fname_pars)
                                for k in range(system.miter)]
     
-    val = '{}h_data_ord={}_NP={}_NH={}_piter={}_n={}_m={}_f={}_de={}.txt'
+    val = '{}h_data_ord={}_NP={}_NH={}_piter={}_n={}_m={}_f={}.txt'
     system.h['fnames_data'] = [val.format(system.dir1,k,*fname_pars)
                                for k in range(system.miter)]
+
+
+    
+    nn = system.miter
+    fname_pars3 = (system.dir1,obj.NH,obj._n[1],obj._m[1])
+    
+    val = '{}p_data_hom_NH={}_n={}_m={}_ord={}.txt'
+    system.p['fnames_data_hom'] = [val.format(*fname_pars3,k) for k in range(nn)]
+
+    val = '{}p_data_het_NH={}_n={}_m={}_ord={}_pow={}.txt'
+    system.p['fnames_data_het'] = [[val.format(*fname_pars3,k,j+1) for j in range(k)] for k in range(nn)]
+    system.p['fnames_data_het'][0].append(val.format(*fname_pars3,0,0))
+
+    val = '{}h_data_hom_NH={}_n={}_m={}_ord={}.txt'
+    system.h['fnames_data_hom'] = [val.format(*fname_pars3,k) for k in range(nn)]    
+    
+    val = '{}h_data_het_NH={}_n={}_m={}_ord={}_pow={}.txt'
+    system.h['fnames_data_het'] = [[val.format(*fname_pars3,k,j) for j in range(k+1)] for k in range(nn)]
+    #system.h['fnames_data_het'][0].append(val.format(*fname_pars3,0,0))
