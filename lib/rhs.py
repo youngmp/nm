@@ -36,6 +36,7 @@ def rhs_avg_1df(t,th,a,eps=0,del1=0,miter=None):
     
     for i in range(nn):
         dth += eps**(i+1)*a.system1.h['lam'][i](th/a._n[1])
+
     dth -= del1/a._m[1]
     return a._n[1]*dth
 
@@ -43,22 +44,98 @@ def rhs_avg_1df(t,th,a,eps=0,del1=0,miter=None):
 def _redu_c(t,y,a,eps=0,del1=None,miter=None):
     """ for coupling only. 1d"""
     system1 = a.system1; system2 = a.system2
+    n = a._n[1]
     
     if miter is None:
         nn = a.system1.miter
     else:
         nn = miter
-    n = a._n[1]
+    
     h = 0
-    for i in range(nn):
-        in1 = y/n
+
+    in1 = y/n    
+    for k in range(nn):
             
-        h1 = system1.h['lam'][i](in1)
-        h2 = system2.h['lam'][i](in1)
+        h1 = system1.h['lam'][k](in1)
+        h2 = system2.h['lam'][k](in1)
         d = h1 - h2
 
-        h += eps**(i+1)*d
+        h += eps**(k+1)*d
     return h
+
+
+def _redu_c2(t,y,a,eps=0,b=0,miter=None):
+    """
+    for coupling only
+    with explicit heterogeneity.
+    """
+    s1 = a.system1; s2 = a.system2
+    n = a._n[1]
+    
+    if miter is None:
+        nn = a.system1.miter
+    else:
+        nn = miter
+    
+    h = 0
+    om = a.om
+
+    in1 = y/n
+    if nn >= 1:
+        s1_h1_hom = s1.h['lam_hom'][0](in1)
+        s1_h1_het = s1.h['lam_het'][0][0](in1)*b
+
+        s2_h1_hom = s2.h['lam_hom'][0](in1)
+        s2_h1_het = s2.h['lam_het'][0][0](in1)*b
+
+        h += eps*(s1_h1_hom+s1_h1_het)
+        h -= eps*(s2_h1_hom+s2_h1_het)
+
+    if nn >= 2:
+        s1_h2_hom = s1.h['lam_hom'][1](in1)
+        s1_h2_het1 = s1.h['lam_het'][1][0](in1)*b
+        s1_h2_het2 = s1.h['lam_het'][1][1](in1)*b**2
+
+        s2_h2_hom = s2.h['lam_hom'][1](in1)
+        s2_h2_het1 = s2.h['lam_het'][1][0](in1)*b
+        s2_h2_het2 = s2.h['lam_het'][1][1](in1)*b**2
+
+        h += eps**2*(s1_h2_hom+s1_h2_het1+s1_h2_het2)
+        h -= eps**2*(s2_h2_hom+s2_h2_het1+s2_h2_het2)
+
+    if nn >= 3:
+        s1_h3_hom = s1.h['lam_hom'][2](in1)
+        s1_h3_het1 = s1.h['lam_het'][2][0](in1)*b
+        s1_h3_het2 = s1.h['lam_het'][2][1](in1)*b**2
+        s1_h3_het3 = s1.h['lam_het'][2][2](in1)*b**3
+
+        s2_h3_hom = s2.h['lam_hom'][2](in1)
+        s2_h3_het1 = s2.h['lam_het'][2][0](in1)*b
+        s2_h3_het2 = s2.h['lam_het'][2][1](in1)*b**2
+        s2_h3_het3 = s2.h['lam_het'][2][2](in1)*b**3
+
+        h += eps**3*(s1_h3_hom+s1_h3_het1+s1_h3_het2+s1_h3_het3)
+        h -= eps**3*(s2_h3_hom+s2_h3_het1+s2_h3_het2+s2_h3_het3)
+
+    if nn >= 4:
+        s1_h4_hom = s1.h['lam_hom'][3](in1)
+        s1_h4_het1 = s1.h['lam_het'][3][0](in1)*b
+        s1_h4_het2 = s1.h['lam_het'][3][1](in1)*b**2
+        s1_h4_het3 = s1.h['lam_het'][3][2](in1)*b**3
+        s1_h4_het4 = s1.h['lam_het'][3][3](in1)*b**4
+
+        s2_h4_hom = s2.h['lam_hom'][3](in1)
+        s2_h4_het1 = s2.h['lam_het'][3][0](in1)*b
+        s2_h4_het2 = s2.h['lam_het'][3][1](in1)*b**2
+        s2_h4_het3 = s2.h['lam_het'][3][2](in1)*b**3
+        s2_h4_het4 = s2.h['lam_het'][3][3](in1)*b**4
+
+        h += eps**4*(s1_h4_hom+s1_h4_het1+s1_h4_het2+s1_h4_het3+s1_h4_het4)
+        h -= eps**4*(s2_h4_hom+s2_h4_het1+s2_h4_het2+s2_h4_het3+s2_h4_het4)
+
+        
+    
+    return h*a._n[1]
 
 
 def _redu(t,y,a,eps=.01,del1=0):
@@ -72,43 +149,14 @@ def _redu(t,y,a,eps=.01,del1=0):
     return np.array([dth*a._n[1],dps*a._n[1],dtf*a._m[1]])
 
 
-def _redu_moving(t,y,a,eps=.01,del1=0):
-    th,ps,tf = y
-
-    tf_m = tf+a._m[1]*t
-    th_m = th+a._n[1]*t
-    
-    u = a.system1(tf_m)
-    
-    dth = eps*a.th_lam(th_m,ps)*u
-    dps = a.system1.kappa_val*ps + eps*a.ps_lam(th_m,ps)*u
-    dtf = a.om*del1/a._m[1]
-    return np.array([dth*a._n[1],dps*a._n[1],dtf*a._m[1]])
-
-
-def _redu_moving_avg(t,y,a,eps=.01,del1=0):
-
-    s,ds = np.linspace(0,2*np.pi*a._m[1],a.NH,retstep=True)
-    th,ps,tf = y
-
-    om = a._n[1]/a._m[1]
-    in1 = th-om*tf+om*s;
-    in2 = s
-
-    z = a.th_lam(in1,ps)
-    i = a.ps_lam(in1,ps)
-    u = a.system2(in2)
-    
-    dth = eps*np.sum(z*u)*ds/(2*np.pi*a._m[1])
-    dps = a.system1.kappa_val*ps + eps*np.sum(i*u)*ds/(2*np.pi*a._m[1])
-    dtf = del1
-    return np.array([dth*a._n[1],dps*a._n[1],dtf])
-
-
 def _full(t,y,a,eps,del1=None):
     """del1 in a pardict"""
     pd1 = a.system1.pardict;pd2 = a.system2.pardict
     y1 = y[:len(a.system1.var_names)];y2 = y[len(a.system1.var_names):]
+
+    #b = pd1['del0']
+    #for i in range(len(a.het_coeffs)):
+    #    pd1['del0'] = eps**i*b**(i+1)*a.het_coeffs[i]
 
     c1 = a.system1.coupling(y,pd1,'val',0)
     c2 = a.system2.coupling(list(y2)+list(y1),pd2,'val',1)
