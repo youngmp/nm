@@ -88,7 +88,7 @@ def rhs(t,z,pdict,option='val',idx=''):
         return om_fix*omt*Matrix([dv/100,dh,dr*100,dw])
 
 
-def coupling(vars_pair,pdict,option='val',idx=''):
+def coupling(vars_pair,pdict,option='val',idx='',c_sign=1):
     """
     
     Synaptic coupling function between Thalamic oscillators.
@@ -128,12 +128,10 @@ def coupling(vars_pair,pdict,option='val',idx=''):
         del1 = 0
 
     if option in ['val','value']:
-        return -om_fix*omt*np.array([w2*(v*100-pdict['esyn'+idx])+del1*100/om_fix,
-                                     0,0,0])/pdict['c'+idx]/100
+        return -c_sign*om_fix*omt*np.array([w2*(v*100-pdict['esyn'+idx])+del1*100/om_fix,0,0,0])/pdict['c'+idx]/100
     
     elif option in ['sym','symbolic']:
-        return -om_fix*omt*Matrix([w2*(v*100-pdict['esyn'+idx])+del1*100/om_fix,
-                                   0,0,0])/pdict['c'+idx]/100
+        return -c_sign*om_fix*omt*Matrix([w2*(v*100-pdict['esyn'+idx])+del1*100/om_fix,0,0,0])/pdict['c'+idx]/100
 
 def main():
     pd1 = {'gL':0.05,'gna':3,'gk':5,
@@ -163,10 +161,10 @@ def main():
             'factor':1}
 
     system1 = rsp(idx=0,model_name='thal0_test',**kws1)
-    system2 = rsp(idx=1,model_name='thal1_test',**kws1)
+    #system2 = rsp(idx=1,model_name='thal1_test',**kws1)
 
-    a11_p0 = nm(system1,system2,recompute_list=['k_thal0','k_thal1'],
-                _n=('om0',1),_m=('om1',1),NH=1000,save_fig=False,del1=0)
+    #a11_p0 = nm(system1,system2,recompute_list=['k_thal0','k_thal1'],
+    #            _n=('om0',1),_m=('om1',1),NH=1000,save_fig=False,del1=0)
 
 
 if __name__ == "__main__":

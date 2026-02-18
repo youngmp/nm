@@ -44,3 +44,9 @@ def g2(x,s=1,scale=1):
     for i in range(-10,10+1):
         tot -= np.exp(-(((x+i*2*np.pi))/s)**2)
     return scale*(tot - pbar)
+
+# this is not the true mean, just the mean of exp(1) and exp(-1)
+#pbar3 = 1.266065877752
+def g3(x):
+    return np.exp(np.cos(x))
+

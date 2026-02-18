@@ -241,20 +241,21 @@ class nmCoupling(object):
         system1.h['sym_hom']={};system1.h['sym_het']={}
         system1.h['lam_hom']={};system1.h['lam_het']={}
 
-        system2.p['dat_hom']={};system2.p['dat_het']={}
-        system2.p['sym_hom']={};system2.p['sym_het']={}
-        system2.p['imp_hom']={};system2.p['imp_het']={}
-        system2.p['lam_hom']={};system2.p['lam_het']={}
-
-        system2.h['dat_hom']={};system2.h['dat_het']={}
-        system2.h['sym_hom']={};system2.h['sym_het']={}
-        system2.h['lam_hom']={};system2.h['lam_het']={}
-
         # global replacement rules based on system index
         system1.rule_lc={};system1.rule_g={};system1.rule_z={}
         system1.rule_i={};system1.rule_p={}
 
         if not(system1.forcing):
+            
+            system2.p['dat_hom']={};system2.p['dat_het']={}
+            system2.p['sym_hom']={};system2.p['sym_het']={}
+            system2.p['imp_hom']={};system2.p['imp_het']={}
+            system2.p['lam_hom']={};system2.p['lam_het']={}
+
+            system2.h['dat_hom']={};system2.h['dat_het']={}
+            system2.h['sym_hom']={};system2.h['sym_het']={}
+            system2.h['lam_hom']={};system2.h['lam_het']={}
+
             system2.rule_lc={};system2.rule_g={};system2.rule_z={}
             system2.rule_i={};system2.rule_p={}
 
@@ -1169,7 +1170,6 @@ class nmCoupling(object):
                 
                 expr_het = expr.coeff(b,j+1)
                 expr_hets.append(expr_het)
-                #print('expr_hets',expr_hets[j])
 
             #print('dat hom')
             dat_hom = self.generate_h(system1,system2,expr_hom,k)
@@ -1180,13 +1180,13 @@ class nmCoupling(object):
                 
                 dat_het = self.generate_h(system1,system2,expr_hets[j],k)
                 dat_hets.append(dat_het)
-
+                #np.savetxt(system1.h['fnames_data_het'][k][j],dat_hets[j])
+                
             np.savetxt(system1.h['fnames_data_hom'][k],dat_hom)
-
-            np.savetxt(system1.h['fnames_data_het'][k][j],dat_hets[j])
+            
             for j in range(k+1):
                 np.savetxt(system1.h['fnames_data_het'][k][j],dat_hets[j])
-
+                
 
         else:
             str1 = '* Loading H {}, order={}...'
@@ -1215,6 +1215,48 @@ class nmCoupling(object):
         
 
         system1.h['lam_het'][k] = interp_hets
+
+    def generate_h_new(self, system1, system2, expr, k):
+        rule = {**system1.rule_p, **system2.rule_p, **system1.rule_par,
+                **system2.rule_par, **system1.rule_lc, **system2.rule_lc,
+                **system1.rule_g, **system2.rule_g, **system1.rule_z,
+                **system2.rule_z, **system1.rule_i, **system2.rule_i}
+
+        if expr == 0:
+            return np.zeros(len(self.x))
+
+        h_lam = lambdify(self.ths, expr.subs(rule))
+
+        n = self._n[1]
+        m = self._m[1]
+
+        # Use enough samples to avoid aliasing on the resonant line.
+        # Minimum: n*NH by m*NH (often you may want a safety factor 2–4).
+        N1 = n * self.NH
+        N2 = m * self.NH
+
+        th1 = np.linspace(0, 2*np.pi, N1, endpoint=False)
+        th2 = np.linspace(0, 2*np.pi, N2, endpoint=False)
+        TH1, TH2 = np.meshgrid(th1, th2, indexing='ij')
+
+        h_grid = h_lam(TH1, TH2)
+        F = fft2(h_grid)  # unnormalized
+
+        # Build 1D Fourier coefficients for H(phi) on modes i=0..NH-1:
+        # coeff[i] = c_{k1=n*i, k2=-m*i} with modular wrap for negative index.
+        coeff = np.zeros(self.NH, dtype=complex)
+        for i in range(self.NH):
+            k1 = (n * i) % N1
+            k2 = (-m * i) % N2
+            coeff[i] = F[k1, k2]
+
+        # Normalize: for numpy/scipy FFT conventions, ifft divides by len.
+        # We want coefficients consistent with ifft over NH points:
+        # scaling here should include the 2D grid size.
+        coeff = coeff / (N1 * N2)
+
+        out = ifft(coeff).real
+        return out
 
                 
     def generate_h(self,system1,system2,expr,k):

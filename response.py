@@ -44,6 +44,7 @@ class Response(object):
                  init,
                  TN,
                  idx,
+                 use_init=None, # force use input init in lc calculation
 
                  coupling=None,
 
@@ -73,12 +74,24 @@ class Response(object):
                  atol=1e-10,
                  max_iter=30,
                  rel_tol=1e-10,
+                 rtol_lc=1e-12,
+                 atol_lc=1e-12,
 
                  save_fig=False,
                  factor=1,
 
                  mode='nm',
-                 lc_prominence=0.25):
+                 lc_prominence=0.25,
+                 halt_after_mono=False,
+                 max_time_lc=5000,
+                 tol_root_lc=1e-13,
+                 
+
+                 **rhs_kwargs):
+
+        """
+        rhs_kwargs is for when using a more general right-hand side.
+        """
             
         var_names = copy.deepcopy(var_names)
         pardict = copy.deepcopy(pardict)
@@ -100,11 +113,17 @@ class Response(object):
         self.idx = idx
 
         self.pars_for_fname = pars_for_fname
-        
+
+        self.use_init = use_init
+        self.max_time_lc = max_time_lc
+        self.tol_root_lc = tol_root_lc
         self.max_iter = max_iter
         self.rtol = rtol
         self.atol = atol
         self.rel_tol = rel_tol
+
+        self.rtol_lc = rtol_lc
+        self.atol_lc = atol_lc
         
         self.g_jac_eps = g_jac_eps
         self.z_jac_eps = z_jac_eps
@@ -168,14 +187,19 @@ class Response(object):
             # define replacement rule for parameters
             # i.e. parname (sympy) to parname_val (float/int)
             self.rule_par.update({prop:value})
-            self.pardict_sym.update({prop:symvar})
+
+            if parname == 'a':
+                self.pardict_sym.update({prop:value})
+            else:
+                self.pardict_sym.update({prop:symvar})
 
         if self.forcing:
             self.pardict_sym.update({'omf':symbols('omf')})
             
         assert(not(model_name is None))
         self.om_fix_key = 'om_fix'+str(idx)
-        assert(self.om_fix_key in pardict)
+        #print('omfixkey',self.om_fix_key,'pardict',pardict)
+        #assert(self.om_fix_key in pardict)
         assert(type(self.om_fix_key) is str)
 
 
@@ -221,27 +245,28 @@ class Response(object):
 
         slib.generate_expansions(self)
         slib.load_coupling_expansions(self)
-
+        print('loaded coupling expansions')
         # make rhs callable
-        self.rhs_sym = rhs(0,self.syms,self.pardict_sym,
-                           option='sym',idx=self.idx)
+        self.rhs_sym = rhs(0,self.syms,self.pardict_sym,option='sym',idx=self.idx,**rhs_kwargs)
         slib.load_jac_sym(self) # callable jac
-
+        slib.load_jac_sym_general_fast(self)
+        
         # get monodromy matrix
         self.load_monodromy()
 
-        # get heterogeneous terms for g, floquet e. fun.
-        self.load_g_sym()
+        if not(halt_after_mono):
+            # get heterogeneous terms for g, floquet e. fun.
+            self.load_g_sym()
 
-        # get g
-        self.load_g()
+            # get g
+            self.load_g()
 
-        # get het. terms for z and i
-        self.load_het_sym()
+            # get het. terms for z and i
+            self.load_het_sym()
 
-        # get iPRC, iIRC.
-        self.load_z()
-        self.load_i()
+            # get iPRC, iIRC.
+            self.load_z()
+            self.load_i()
             
     def load_lc(self):
 
@@ -256,7 +281,7 @@ class Response(object):
         if 'lc' in self.recompute_list or file_dne:
             print('* Computing LC data...')
             logging.info('* Computing LC data...')
-            y,t = self.generate_lc()
+            y,t = self.generate_lc(max_time_lc=self.max_time_lc,tol_root_lc=self.tol_root_lc)
 
             nr,nc = np.shape(y)
             z = np.zeros([nr,nc+1])
@@ -280,12 +305,14 @@ class Response(object):
             self.T_old = z[-1,0]
             self.lc['t_old'] = z[:,0]
             
+            print('self.T',self.T,'omfix',self.pardict[self.om_fix_key])
+            
             #self.T = z[-1,0]
 
         else:
             self.T = z[-1,0]
 
-        print('self.T',self.T,'omfix',self.pardict[self.om_fix_key])
+        print('self.T',self.T)
 
         self.tlc,self.dtlc = np.linspace(0,self.T,self.TN,retstep=True,
                                          endpoint=False)
@@ -329,7 +356,7 @@ class Response(object):
         for j,key in enumerate(self.var_names):
             self.rule_lc_local[self.syms[j]] = self.lc['imp_'+key](self.t)
 
-    def generate_lc(self,max_time=5000,method='LSODA',tol_root=1e-13):
+    def generate_lc(self,max_time_lc=5000,method='LSODA',tol_root_lc=1e-13):
         """
         generate limit cycle data for system
         system: dict. 
@@ -339,36 +366,38 @@ class Response(object):
         epstime = 1e-4
         dy = np.zeros(self.dim+1) + 10
 
-        init = self.init
-        T_init = self.init[-1]
-
         pardict = self.pardict
 
-        sol = solve_ivp(self.rhs,[0,max_time],
-                        self.init[:-1],
-                        args=(pardict,'value',self.idx),
-                        method=method,
-                        dense_output=True,
-                        rtol=1e-12,atol=1e-12)
+        if not(self.use_init):
+            init = self.init
+            T_init = self.init[-1]
 
-        if self.save_fig:
-            if not(os.path.exists('figs_temp')):
-                os.makedirs('figs_temp')
-            fig = plt.figure()
-            ax = fig.add_subplot(111)
-            ax.plot(sol.t,sol.y.T[:,0])
-            ax.set_xlim(sol.t[-1]-(sol.t[-1]/10),sol.t[-1])
-            plt.savefig('figs_temp/plot_limit_cycle_long.png')
-            #plt.show()
+            sol = solve_ivp(self.rhs,[0,max_time_lc],
+                            self.init[:-1],
+                            args=(pardict,'value',self.idx),
+                            method=method,
+                            dense_output=True,
+                            rtol=self.rtol_lc,atol=self.atol_lc)
+            
+            T_init,res1 = get_period(sol,prominence=self.lc_prominence)
+            yinit = sol.sol(res1)
+            init = np.append(yinit,T_init)
+            
+            if self.save_fig:
+                if not(os.path.exists('figs_temp')):
+                    os.makedirs('figs_temp')
+                fig = plt.figure()
+                ax = fig.add_subplot(111)
+                ax.plot(sol.t,sol.y.T[:,0])
+                ax.set_xlim(sol.t[-1]-(sol.t[-1]/10),sol.t[-1])
+                plt.savefig('figs_temp/plot_limit_cycle_long.png')
+                #plt.show()
 
-                
-        T_init,res1 = get_period(sol,prominence=self.lc_prominence)
-        init = np.append(sol.sol(res1),T_init)
-
-        print('t init',T_init)
+        else:
+            init = self.init
 
         counter = 0
-        while np.linalg.norm(dy) > tol_root and\
+        while np.linalg.norm(dy) > tol_root_lc and\
               counter < self.max_iter:
         
             J = np.zeros((self.dim+1,self.dim+1))
@@ -439,11 +468,16 @@ class Response(object):
             init += dy
 
             if False:
-                fig,axs = plt.subplots()
-                axs.plot(sol.y[0],label='unp')
-                axs.plot(solm.y[0],label='pm')
-                axs.plot(solp.y[0],label='pp')
-                axs.legend()
+                print('dy=',dy)
+                fig,axs = plt.subplots(len(self.var_names),1)
+                for k in range(len(self.var_names)):
+                    axs[k].plot(sol.t,sol.y[k],label='unp')
+                    axs[k].plot(solm.t,solm.y[k],label='pm')
+                    axs[k].plot(solp.t,solp.y[k],label='pp')
+                    axs[k].legend()
+                
+                if not(os.path.isdir('figs_temp/iters')):
+                    os.mkdir('figs_temp/iters')
                 
                 plt.savefig('figs_temp/iters/lc_'+str(counter)+'.png')
 
@@ -470,8 +504,97 @@ class Response(object):
 
         return sol.y.T,sol.t
     
-
+    
     def load_monodromy(self):
+        file_dne = not os.path.isfile(self.m_fname)
+        if ('m' in self.recompute_list) or file_dne:
+            print('* Computing monodromy (augmented)...')
+            logging.info('* Computing monodromy (augmented)...')
+            
+            solx = solve_ivp(lambda t,x: self.rhs(t,x,self.pardict,'value',self.idx),
+                     [0, self.T], self.lc['dat'][0],
+                     method=self.method, rtol=1e-10, atol=1e-10)
+
+            
+            x0 = self.lc['dat'][0]
+            dx = solx.y[:,-1] - x0
+            v0 = self.rhs(0.0, x0, self.pardict, 'value', self.idx)
+            dT = np.dot(dx, v0) / np.dot(v0, v0)
+            print("dT:", dT)
+
+            y0 = np.asarray(self.lc['dat'][0], dtype=float)  # shape (n,)
+            n = y0.size
+            T = float(self.T) - dT
+
+            Phi0 = np.eye(n)
+            Phi0_flat = Phi0.reshape(n * n, order='F')
+
+            Y0 = np.concatenate([y0, Phi0_flat])
+
+            # tolerances
+            scale_x = np.maximum(1.0, np.abs(y0))
+            atol_x = 1e-12 * scale_x
+            atol_phi = 1e-12 * np.ones(n * n)   
+            atol = np.concatenate([atol_x, atol_phi])
+            rtol = 1e-12
+
+            # augmented RHS
+            def aug_rhs(t, Y):
+                x = Y[:n]
+                Phi = Y[n:].reshape((n, n), order='F')
+
+                fx = self.rhs(t, x, self.pardict, 'value', self.idx)
+                J = self.jac(t, x) 
+
+                dPhi = (J @ Phi).reshape(n * n, order='F')
+                return np.concatenate([fx, dPhi])
+
+            start = time.time()
+            sol = solve_ivp(
+                aug_rhs,
+                [0.0, T],
+                Y0,
+                method=self.method,
+                rtol=rtol,
+                atol=atol,
+                dense_output=False,   # OK; solver returns state at final time
+                max_step = (T/2)/50
+            )
+            end = time.time()
+            print('mon eval time', end - start)
+
+            if not sol.success:
+                raise RuntimeError(f"Monodromy integration failed: {sol.message}")
+
+            YT = sol.y[:, -1]
+            xT = YT[:n]
+            M = YT[n:].reshape((n, n), order='F')
+
+            self.sol = sol.y.T
+            self.M = M
+            np.savetxt(self.m_fname, self.M)
+
+        else:
+            print('* Loading monodromy...')
+            logging.info('* Loading monodromy...')
+            self.M = np.loadtxt(self.m_fname)
+
+        self.eigenvalues, self.eigenvectors = np.linalg.eig(self.M)
+
+        self.min_lam_idx = np.argsort(self.eigenvalues)[-2]
+        self.lam = self.eigenvalues[self.min_lam_idx]
+        self.kappa_val = np.log(self.lam) / self.T
+
+        einv = np.linalg.inv(self.eigenvectors * self.factor)
+        idx = np.argsort(np.abs(self.eigenvalues - 1))[0]
+
+        self.g1_init = self.eigenvectors[:, self.min_lam_idx] * self.factor
+        self.z0_init = einv[idx, :]
+        self.i0_init = einv[self.min_lam_idx, :]
+
+        print('* Floquet Exponent kappa =', self.kappa_val)
+
+    def load_monodromy_old(self):
         """
         if monodromy data exists, load. if DNE or 
         recompute required, compute here.
@@ -484,18 +607,18 @@ class Response(object):
 
             initm = copy.deepcopy(self.eye)
             r,c = np.shape(initm)
-            init = np.reshape(initm,r*c)
+            init = np.reshape(initm,r*c, order='F')
 
             start = time.time();
             sol = solve_ivp(self.monodromy,[0,self.T],init,
                             t_eval=self.tlc_endpt,
                             method=self.method,
-                            rtol=1e-13,atol=1e-13)
+                            rtol=1e-12,atol=1e-12)
             
             end = time.time();print('mon eval time',end-start)
             
             self.sol = sol.y.T
-            self.M = np.reshape(self.sol[-1,:],(r,c))
+            self.M = np.reshape(self.sol[-1,:],(r,c), order='F')
             np.savetxt(self.m_fname,self.M)
             
         else:
@@ -503,22 +626,41 @@ class Response(object):
             logging.info('* Loading monodromy...')
             self.M = np.loadtxt(self.m_fname)
         
+        # get right-hand side output:
+        v0 = self.rhs(0,self.lc['dat'][0],self.pardict,'value',self.idx)
+        vf = self.rhs(0,self.lc['dat'][-1],self.pardict,'value',self.idx)
+        v1 = self.M@v0
+        d = np.linalg.norm(v1-v0)/np.linalg.norm(v0)
+        a = np.linalg.norm(v1)/np.linalg.norm(v0)
+        c = np.dot(v1,v0)/np.linalg.norm(v1)/np.linalg.norm(v0)
+        print('d,a,c',d,a,c)
+        
+        dx = self.lc['dat'][0]-self.lc['dat'][-1]
+        dx_parallel = np.dot(dx,v0)/np.linalg.norm(v0)**2*v0
+        print('dx_parallel',dx_parallel)
+        print('dx_perp',dx-dx_parallel)
+        
+        e2 = np.linalg.norm(self.M@v0-vf)/np.linalg.norm(v0)
+        print('e1=',d,'e2=',e2)
+        
         self.eigenvalues, self.eigenvectors = np.linalg.eig(self.M)
 
         logging.debug(str(self.eigenvalues)+str(self.eigenvectors))
         
-        # get smallest eigenvalue and associated eigenvector
+        # get second largest eigenvalue and associated eigenvector
+        #print('eigenvalues',self.eigenvalues)
+        #print('sorted index',np.argsort(self.eigenvalues))
         self.min_lam_idx = np.argsort(self.eigenvalues)[-2]
 
-        logging.debug('min_lam_idx='+str(self.min_lam_idx))
-        logging.debug('eigenstuff'+str(self.eigenvalues[self.min_lam_idx]))
+        #logging.debug('min_lam_idx='+str(self.min_lam_idx))
+        #logging.debug('eigenstuff'+str(self.eigenvalues[self.min_lam_idx]))
         
         self.lam = self.eigenvalues[self.min_lam_idx]  # floquet mult.
         self.kappa_val = np.log(self.lam)/self.T  # floquet exponent
 
         # make sign of eigenvectors consistent
-        if np.sum(self.eigenvectors[:,self.min_lam_idx]) < 0:
-            self.eigenvectors[:,self.min_lam_idx] *= -1
+        #if np.sum(self.eigenvectors[:,self.min_lam_idx]) < 0:
+        #    self.eigenvectors[:,self.min_lam_idx] *= -1
         
         #einv = np.linalg.inv(self.eigenvectors/2)
         einv = np.linalg.inv(self.eigenvectors*self.factor)
@@ -528,14 +670,15 @@ class Response(object):
         self.z0_init = einv[idx,:]
         self.i0_init = einv[self.min_lam_idx,:]
 
-        logging.debug('eigenvectors'+str(self.eigenvectors))
+        #print('eigenvectors'+str(self.eigenvectors))
         
-        logging.debug('g1_init'+str(self.g1_init))
-        logging.debug('z0_init'+str(self.z0_init))
-        logging.debug('i0_init'+str(self.i0_init))
+        #print('g1_init'+str(self.g1_init))
+        #print('z0_init'+str(self.z0_init))
+        #print('i0_init'+str(self.i0_init))
 
         print('* Floquet Exponent kappa ='+str(self.kappa_val))
-        logging.info('* Floquet Exponent kappa ='+str(self.kappa_val))
+        #print('* Sorted Exponents ='+str(np.log(np.sort(self.eigenvalues))/self.T))
+        #logging.info('* Floquet Exponent kappa ='+str(self.kappa_val))
 
 
     def monodromy(self,t,z):
@@ -551,10 +694,10 @@ class Response(object):
         jac = self.jaclc(t)
         
         n = int(np.sqrt(len(z)))
-        z = np.reshape(z,(n,n))        
+        z = np.reshape(z,(n,n), order='F')        
         dy = np.dot(jac,z)
         
-        return np.reshape(dy,n*n)
+        return np.reshape(dy,n*n, order='F')
     
     def load_g_sym(self):
         # load het. functions h if they exist. otherwise generate.
@@ -1076,16 +1219,22 @@ class Response(object):
             p1 = lib.kProd(i,self.dx_vec)
             p2 = kp(p1,sym.eye(self.dim))
 
+            #print('iter',i)
+            #print('p1,p2',p1,p2)
+
             for j,key in enumerate(self.var_names):
                 logging.debug('\t var='+str(key))
                 d1 = lib.vec(lib.df(self.rhs_sym[j],self.x_vec,i+1))
                 d1 = sym.powsimp(d1)
                 self.a[key] += (1/math.factorial(i))*(p2*d1)
+                #print('given i, var name',key,', term is',self.a[key])
                 
         self.A = sym.zeros(self.dim,self.dim)
         
         for i,key in enumerate(self.var_names):            
             self.A[:,i] = self.a[key]
+
+        #print('A is',self.A)
         
         het = self.A*self.z['vec_psi']
 
@@ -1096,22 +1245,40 @@ class Response(object):
         rule_trunc = {}
         for k in range(self.miter,self.miter+200):
             rule_trunc.update({self.psi**k:0})
+            #print('truncating order',k)
             
         for i,key in enumerate(self.var_names):
             logging.info('z,i het sym subs key='+str(key))
 
+            #print('subsituting key',key)
+            tmp = het[i]
 
+            tmp = sym.expand(tmp)
+            #print('after zero expand')
             
-            tmp = het[i].subs(rule)
+            tmp = tmp.subs(rule)
+
+            #print('after first sub')
+            
             tmp = sym.expand(tmp,basic=True,deep=True,
                              power_base=False,power_exp=False,
                              mul=True,log=False,
                              multinomial=True)
+
+            #print('after first expand')
             
             tmp = tmp.subs(rule_trunc)
+            #print('after first subs')
+            
             tmp = sym.collect(tmp,self.psi).subs(rule_trunc)
+
+            #print('after first collect')
             tmp = sym.expand(tmp).subs(rule_trunc)
+
+            #print('after second expand')
             tmp = sym.collect(tmp,self.psi).subs(rule_trunc)
+
+            #print('after final power simplification')
             tmp = sym.powsimp(tmp)
             out[key] = tmp
             

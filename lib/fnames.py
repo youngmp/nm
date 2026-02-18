@@ -98,4 +98,18 @@ def load_fnames_nm(system,obj,model_pars='',coupling_pars=''):
     
     val = '{}h_data_het_NH={}_n={}_m={}_ord={}_pow={}.txt'
     system.h['fnames_data_het'] = [[val.format(*fname_pars3,k,j) for j in range(k+1)] for k in range(nn)]
+
+    
+    val = '{}p_data_homb_NH={}_n={}_m={}_ord={}.txt'
+    system.p['fnames_data_homb'] = [val.format(*fname_pars3,k) for k in range(nn)]
+
+    val = '{}p_data_hetb_NH={}_n={}_m={}_ord={}_pow={}.txt'
+    system.p['fnames_data_hetb'] = [[val.format(*fname_pars3,k,j+1) for j in range(k)] for k in range(nn)]
+    system.p['fnames_data_hetb'][0].append(val.format(*fname_pars3,0,0))
+
+    val = '{}h_data_homb_NH={}_n={}_m={}_ord={}.txt'
+    system.h['fnames_data_homb'] = [val.format(*fname_pars3,k) for k in range(nn)]    
+    
+    val = '{}h_data_hetb_NH={}_n={}_m={}_ord={}_pow={}.txt'
+    system.h['fnames_data_hetb'] = [[val.format(*fname_pars3,k,j) for j in range(k+1)] for k in range(nn)]
     #system.h['fnames_data_het'][0].append(val.format(*fname_pars3,0,0))

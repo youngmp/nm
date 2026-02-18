@@ -12,6 +12,7 @@ import math
 import dill
 
 import sympy as sym
+import numpy as np
 
 from sympy import diff, Sum, Indexed, collect, expand, symbols
 from sympy.utilities.lambdify import lambdify
@@ -352,6 +353,42 @@ def load_jac_sym(obj):
             obj.jac_sym[i,j] = tmp
     
     rule = {**obj.rule_lc_local,**obj.rule_par}
+
+    rule_temp = rule
+    if 'a' in rule:
+        del rule_temp['a']
+
+    sym2 = obj.jac_sym.subs(rule_temp)
     # callable jacobian matrix evaluated along limit cycle
-    
-    obj.jaclc = lambdify((obj.t),obj.jac_sym.subs(rule))
+    obj.jaclc = lambdify((obj.t),sym2)
+
+def load_jac_sym_general_fast(obj):
+    n = obj.dim
+    J = sym.zeros(n, n)
+
+    # rhs_sym: list/Matrix of expressions
+    # syms: list of state symbols
+    for i in range(n):
+        fi = obj.rhs_sym[i]
+        for j in range(n):
+            J[i, j] = sym.diff(fi, obj.syms[j])  # no powsimp, no simplify
+
+    # substitute parameters only
+    if hasattr(obj, "rule_par") and obj.rule_par:
+        rule_par_temp = obj.rule_par
+        if 'a' in rule_par_temp:
+            del rule_par_temp['a']
+            J = J.subs(rule_par_temp)
+        else:
+            J = J.subs(obj.rule_par)
+
+    # lambdify J as function of (t, x0, ..., x_{n-1})
+    args = (obj.t, *obj.syms)
+    jac_fun = sym.lambdify(args, J, modules="numpy")
+
+    def jac(t, x):
+        x = np.asarray(x, dtype=float).reshape(-1)
+        JJ = jac_fun(t, *x)
+        return np.asarray(JJ, dtype=float)
+
+    obj.jac = jac
