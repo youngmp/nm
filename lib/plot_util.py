@@ -151,7 +151,7 @@ def add_diagram_1d_del(axs,a,eps,del_tup=(0.001,.1,200),
     return axs
 
 
-def add_diagram_1d_scatter(axs,a,del1,eps_tup=(0.001,.5,200),
+def add_diagram_1d_scatter(axs,a,b,eps_tup=(0.001,.5,200),
                            rhs=_redu_c,
                            domain=np.linspace(-.1,2*np.pi+.1,2000),
                            include_limits=True,label='',**kwargs):
@@ -161,7 +161,7 @@ def add_diagram_1d_scatter(axs,a,del1,eps_tup=(0.001,.5,200),
     n = a._n[1]
 
     for eps in eps_list:
-        z1,z2 = bif1d(a,eps,del1,domain=domain,rhs=rhs,**kwargs)
+        z1,z2 = bif1d(a,eps,b,domain=domain,rhs=rhs,**kwargs)
 
         zu.append(np.mod(z1,2*np.pi))
         zs.append(np.mod(z2,2*np.pi))
@@ -370,7 +370,7 @@ def load_diagram_full_f(a,del1,eps_tup=[0.01,0.011,2],dir1='bifdat',
                 tot = maxt
 
             phis,phi_last = util.get_phase_diff_f_v2(rhs=rhs,phi0=phi0,a=a,eps=eps_init,
-                                                     del1=del1,max_time=tot,sort_by=sort_by)
+                                                     b=del1,max_time=tot,sort_by=sort_by)
 
             phi0 = phi_last
 
@@ -454,15 +454,47 @@ def draw_1d_solutions(axs,a,T,eps,b,init,rhs=_redu_c,miter=None,ls='-',lw=1,
         
     return axs
 
-
-
-def draw_quick_plot_f(axs,data_list,a,norm=None):
+def fix_flips(data_bu_list,a):
+    """fix flips in bifurcation diagram"""
+    tol1 = 1
+    for i,data in enumerate(data_bu_list):
+        phases = data[:,1+a._m[1]:]
+        for j in range(1,len(phases)):
+            phase0_prev = phases[j-1][0]
+            phase0_curr = phases[j][0]
     
+            d = circd(phase0_prev,phase0_curr)
+            iter = 0
+            while d > tol1 and iter < a._n[1]+a._m[1]:
+                phases[j] = np.roll(phases[j],1)
+                phase0_curr = phases[j][0]
+                d = circd(phase0_prev,phase0_curr)
+                #print('d',d,phase0_curr,phase0_prev)
+                #print('phases edit',phases[j])
+                iter += 1
+            data[j,1+a._m[1]:] = phases[j]
+    return data_bu_list
+
+def circd(th1,th2):
+    """circular distance"""
+    return np.min([np.abs(th1-th2),2*np.pi-np.abs(th1-th2)])
+
+def draw_quick_plot_f(axs,data_list,a,norm=None,**kwargs):
+    data_list = fix_flips(data_list,a)
     for i in range(len(data_list)):
         data1 = data_list[i] # data1 is periods, data2 is t_diffs
-        phase_diffs = data1[:,1+a._n[1]] # just use first set of phase diffs.
         
-        axs.plot(data1[:,0],phase_diffs,color='gray',lw=2)
+        phase_diffs = data1[:,1+a._m[1]:] # just use first set of phase diffs.
+        
+        dtheta = np.diff(phase_diffs,axis=0)
+        wraps = np.abs(dtheta) > np.pi   # threshold for wrap
+
+        theta_plot = phase_diffs.astype(float).copy()
+        theta_plot[1:][wraps] = np.nan
+        
+        #phase_diffs[np.abs(phase_diffs) > np.pi/2] = np.nan
+        
+        axs.plot(data1[:,0],theta_plot,lw=2,**kwargs)
         
     #axs.set_title('Full del={}'.format(a.del1))
 

@@ -53,7 +53,7 @@ def _redu_c(t,y,a,eps=0,del1=None,miter=None):
     
     h = 0
 
-    in1 = y/n    
+    in1 = y
     for k in range(nn):
             
         h1 = system1.h['lam'][k](in1)
@@ -135,7 +135,7 @@ def _redu_c2(t,y,a,eps=0,b=0,miter=None):
 
         
     
-    return h*a._n[1]
+    return h
 
 
 def _redu(t,y,a,eps=.01,del1=0):
@@ -149,20 +149,44 @@ def _redu(t,y,a,eps=.01,del1=0):
     return np.array([dth*a._n[1],dps*a._n[1],dtf*a._m[1]])
 
 
-def _full(t,y,a,eps,del1=None):
+def _full(t,y,a,eps,b,option='val',c_sign=1):
     """del1 in a pardict"""
     pd1 = a.system1.pardict;pd2 = a.system2.pardict
     y1 = y[:len(a.system1.var_names)];y2 = y[len(a.system1.var_names):]
 
-    #b = pd1['del0']
-    #for i in range(len(a.het_coeffs)):
-    #    pd1['del0'] = eps**i*b**(i+1)*a.het_coeffs[i]
+    pd1['del0'] = 0
+    for i in range(len(a.het_coeffs)):
+        pd1['del0'] += eps**i*b**(i+1)*a.het_coeffs[i]
 
-    c1 = a.system1.coupling(y,pd1,'val',0)
-    c2 = a.system2.coupling(list(y2)+list(y1),pd2,'val',1)
     
-    out1 = a.system1.rhs(t,y1,pd1,'val',0) + eps*c1
-    out2 = a.system2.rhs(t,y2,pd2,'val',1) + eps*c2
+    c1 = a.system1.coupling(y,pd1,option,0)
+    c2 = a.system2.coupling(list(y2)+list(y1),pd2,option,1)
+    
+    out1 = (a.system1.rhs(t,y1,pd1,option,0) + c_sign*eps*c1)
+    out2 = (a.system2.rhs(t,y2,pd2,option,1) + c_sign*eps*c2)
+    return np.array(list(out1)+list(out2))
+
+
+
+def _full_mono_rhs(t,y,pdict,option='val',idx=None):
+    """del1 in a pardict"""
+    a = pdict['a']
+    y1 = y[:len(a.system1.var_names)];y2 = y[len(a.system1.var_names):]
+
+    eps = pdict['eps']
+
+    pdict['del0'] = 0
+    b = pdict['b']
+    for i in range(len(a.het_coeffs)):
+        pdict['del0'] += eps**i*b**(i+1)*a.het_coeffs[i]
+        
+    
+
+    c1 = a.system1.coupling(y,pdict,option,0)
+    c2 = a.system2.coupling(list(y2)+list(y1),pdict,option,1)
+    
+    out1 = a.system1.rhs(t,y1,pdict,option,0) + eps*c1
+    out2 = a.system2.rhs(t,y2,pdict,option,1) + eps*c2
     return np.array(list(out1)+list(out2))
 
 
