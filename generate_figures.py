@@ -3575,27 +3575,26 @@ def main():
     
     # listed in order of Figures in paper
     figures = [
-        #(forcing_fn,[],['figs/f_forcing.pdf']),
+        (forcing_fn,[],['figs/f_forcing.pdf']),
         
-        #(tongues_thal1_v2,[],['figs/f_tongues_thal_v2.pdf','figs/f_tongues_thal_v2.png']),
-        #(tongues_cgl1_v2,[],['figs/f_tongues_cgl_v2.pdf','figs/f_tongues_cgl_v2.png']),
+        (tongues_thal1_v2,[],['figs/f_tongues_thal_v2.pdf']),
+        (tongues_cgl1_v2,[],['figs/f_tongues_cgl_v2.pdf']),
 
-        #(traj_cgl1,[],['figs/f_traj_cgl1.pdf','figs/f_traj_cgl1.png']),
-        #(traj_thal1,[],['figs/f_traj_thal1.pdf','figs/f_traj_thal1.png']),
-        #(traj_thal2,[1024],['figs/f_traj_thal2.pdf','figs/f_traj_thal2.png']),
-        #(traj_vdp_thal,[1024],['figs/f_traj_vdp_thal.pdf','figs/f_traj_vdp_thal.png']),
+        (traj_cgl1,[],['figs/f_traj_cgl1.pdf']),
+        (traj_thal1,[],['figs/f_traj_thal1.pdf']),
+        (traj_thal2,[1024],['figs/f_traj_thal2.pdf']),
         
-        #(bif1d_cgl1,[],['figs/f_bif1d_cgl1.pdf']),
+        (bif1d_cgl1,[],['figs/f_bif1d_cgl1.pdf']),
         (bif1d_thal1,[],['figs/f_bif1d_thal1.pdf']),
         
-        #(bif_thal2_11,[],['figs/f_bif1d_thal2_11.pdf']),
-        #(bif_thal2a,[],['figs/f_bif1d_thal2a.pdf']),
-        #(bif_thal2b,[],['figs/f_bif1d_thal2b.pdf']),
+        (bif_thal2_11,[],['figs/f_bif1d_thal2_11.pdf']),
+        (bif_thal2a,[],['figs/f_bif1d_thal2a.pdf']),
+        (bif_thal2b,[],['figs/f_bif1d_thal2b.pdf']),
 
-        #(bif1_vdp_thal,[],['figs/f_bif1d_vdp_thal.pdf']),
+        (bif1_vdp_thal,[],['figs/f_bif1d_vdp_thal.pdf']),
         
-        #(bif2_thal2_v2,[],['figs/f_bif2_thal2_v2.pdf']),
-        #(bif2_vdp_thal,[],['figs/f_bif2_vdp_thal.pdf']),
+        (bif2_thal2_v2,[],['figs/f_bif2_thal2_v2.pdf']),
+        (bif2_vdp_thal,[],['figs/f_bif2_vdp_thal.pdf']),
         
     ]
     
