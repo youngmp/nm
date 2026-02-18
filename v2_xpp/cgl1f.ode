@@ -1,0 +1,41 @@
+p eps=0.1,del1=0.01,omx=1,omf=1
+p sig=.08,rho=.12,mu=1
+#p pbar=1.266065877752
+p factor2=20
+
+R2=x^2+y^2
+
+f1(x)=(exp(x)/2.7)^3
+f2(x)=(exp(x)/2.7)^3
+g(x,y)=-eps*f1(x)+eps^2*factor2*f2(y)
+
+x'=omx*(sig*x*(1-R2)-y*(1+rho*(R2-1))+g(u1,u2))
+y'=omx*(sig*y*(1-R2)+x*(1+rho*(R2-1)))
+
+# following 7.4 of the xpp book
+u1'=(omf+del1)*(u1*(1-u1^2-v1^2)-v1)
+v1'=(omf+del1)*(v1*(1-u1^2-v1^2)+u1)
+
+u2'=(omf+del1)*(u2*(1-u2^2-v2^2)-v2)
+v2'=(omf+del1)*(v2*(1-u2^2-v2^2)+u2)
+
+x(0)=1
+y(0)=0
+
+# initialize cosine at (1,0)
+u1(0)=1
+v1(0)=0
+
+# initialize cosine and sine at 2 radians
+u2(0)=-0.4161468365471
+v2(0)=0.9092974268256817
+
+aux ga=g(u1,u2)
+
+@ nplots=2
+@ xp1=t,yp1=x,xp2=t,yp2=ga
+@ xlo=1900,xhi=2000
+@ ylo=-1.5,yhi=1.5
+@ dt=0.01,total=2000
+@ dsmin=1e-7, dsmax=5e-4, ds=1e-5, nmax=2000
+@ parmin=-.3,parmax=.3

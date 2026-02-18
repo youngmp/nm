@@ -1,0 +1,20 @@
+# 1:1 reduced forced cgl.
+# right-hand sidefunctions are from v2_jupyter/fourier_cgl1.ipynb
+# save 2par to /v2_bifdat_2par/redu/.
+
+p eps=.05,d=0.01
+p o1=1,o2=1
+
+h1(x)=2*cos(x*1.0)*(-0.1506)-2*sin(x*1.0)*(-0.1004)
+h2(x)=0.1149+2*cos(x*1.0)*(0.5726)-2*sin(x*1.0)*(-3.5754)-2*sin(x*2.0)*(-0.2151)
+
+f1(x)=o1*eps*h1(x)
+f2(x)=o2*eps^2*h2(x)
+
+x'=-d+f1(x)+f2(x)
+
+@ bounds=10000000
+@ dt=.01
+@ total=500
+
+@ dsmax=.01,dsmin=.00001,ds=.01,parmax=.3,parmin=-.3

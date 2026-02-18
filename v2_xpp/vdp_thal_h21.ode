@@ -1,0 +1,33 @@
+# 2:1 reduced vdp-thal
+# right-hand sidefunctions are from v2_jupyter/fourier_vdp_thal.ipynb
+# save 2par to /v2_bifdat_2par/redu/.
+
+p eps=.05,b=0.01
+p o1=1,o2=1
+
+
+
+h1a(x)=-0.6517+2*cos(x*2.0)*(0.0965)+2*cos(x*4.0)*(-0.0116)-2*sin(x*2.0)*(-0.0491)-2*sin(x*4.0)*(-0.0069)
+j1a(x)=-6.1799
+
+h2a(x)=0.4208+2*cos(x*2.0)*(0.1863)+2*cos(x*4.0)*(0.0286)-2*sin(x*2.0)*(-0.1204)
+j2a1(x)=0.3459+2*cos(x*2.0)*(-0.3202)+2*cos(x*4.0)*(-0.0792)+2*cos(x*6.0)*(0.0144)+2*cos(x*8.0)*(0.0125)-2*sin(x*2.0)*(-0.6307)-2*sin(x*4.0)*(0.1548)-2*sin(x*6.0)*(0.0137)
+j2a2(x)=-121.8370
+
+h1b(x)=2*cos(x*2.0)*(0.0066)-2*sin(x*2.0)*(0.0150)
+j1b(x)=0
+
+h2b(x)=0.0017+2*cos(x*2.0)*(0.0068)+2*cos(x*4.0)*(-0.0011)-2*sin(x*2.0)*(-0.0025)-2*sin(x*4.0)*(-0.0025)
+j2b1(x)=2*cos(x*2.0)*(0.0899)-2*sin(x*2.0)*(-0.0412)
+j2b2(x)=0
+
+f1(x)=h1a(x)+b*j1a(x)-h1b(x)-b*j1b(x)
+f2(x)=h2a(x)+b*j2a1(x)+b^2*j2a2(x)-h2b(x)-b*j2b2(x)-b^2*j2b2(x)
+
+x'=o1*eps*f1(x)+o2*eps^2*f2(x)
+
+@ bounds=10000000
+@ dt=.01
+@ total=500
+
+@ dsmax=.01,dsmin=.00001,ds=.01,parmax=.3,parmin=-.3

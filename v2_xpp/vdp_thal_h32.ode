@@ -1,0 +1,31 @@
+# 3:2 reduced vdp-thal
+# right-hand sidefunctions are from v2_jupyter/fourier_vdp_thal.ipynb
+# save 2par to /v2_bifdat_2par/redu/.
+
+p eps=.05,b=0.01
+p o1=1,o2=1
+
+h1a(x)=-0.6517+2*cos(x*6.0)*(-0.0038)-2*sin(x*6.0)*(-0.0062)
+j1a(x)=-6.1799
+
+h2a(x)=0.3035+2*cos(x*6.0)*(0.0206)
+j2a1(x)=0.3468+2*cos(x*6.0)*(-0.0765)-2*sin(x*6.0)*(0.0536)-2*sin(x*12.0)*(0.0123)
+j2a2(x)=-121.8328
+
+h1b(x)=0.0004+2*cos(x*6.0)*(-0.0003)-2*sin(x*6.0)*(0.0002)
+j1b(x)=0
+
+h2b(x)=-0.0027+2*cos(x*6.0)*(-0.0002)-2*sin(x*6.0)*(0.0010)-2*sin(x*12.0)*(0.0001)
+j2b1(x)=2*cos(x*6.0)*(0.0030)-2*sin(x*6.0)*(0.0034)
+j2b2(x)=0
+
+f1(x)=h1a(x)+b*j1a(x)-h1b(x)-b*j1b(x)
+f2(x)=h2a(x)+b*j2a1(x)+b^2*j2a2(x)-h2b(x)-b*j2b2(x)-b^2*j2b2(x)
+
+x'=o1*eps*f1(x)+o2*eps^2*f2(x)
+
+@ bounds=10000000
+@ dt=.01
+@ total=500
+
+@ dsmax=.01,dsmin=.00001,ds=.01,parmax=.3,parmin=-.3

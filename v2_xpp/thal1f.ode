@@ -1,0 +1,65 @@
+p eps=0,d=0
+p el=-0.7,ena=0.5,ek=-.9,et=0
+p gl=0.05,gna=3,gk=5,gt=5
+p omfix=0.9901981420040301,omf=1,omx=1
+p factor2=20
+
+p ib=.085
+
+ah(v)=0.128*exp(-5.556*(v+0.46))
+bh(v)=4/(1+exp(-20*(v+0.23)))
+
+minf(v)=1/(1+exp(-14.286*(v+0.37)))
+hinf(v)=1/(1+exp(25*(v+0.41)))
+rinf(v)=100/(1+exp(25*(v+0.84)))
+pinf(v)=1/(1+exp(-16.13*(v+0.6)))
+
+tauh(v)=1/(ah(v)+bh(v))  
+taur(v)=28+exp(-9.52*(v+0.25))  
+
+iL(v)=gL*(v-eL)
+ina(v,h)=gna*minf(v)^3*h*(v-ena)
+ik(v,h)=gk*(0.75*(1-h))^4*(v-ek)
+it(v,r)=gt*0.01*pinf(v)^2*r*(v-et)
+
+v0'=omx*omfix*(-iL(v0)-ina(v0,h0)-ik(v0,h0)-it(v0,r0)+ib)+omx*g(u1,u2)
+h0'=omx*omfix*(hinf(v0)-h0)/tauh(v0)
+r0'=omx*omfix*(rinf(v0)-r0)/taur(v0)
+
+f1(x)=(exp(x)/2.7)^3
+f2(x)=(exp(x)/2.7)^3
+g(x,y)=-eps*f1(x)+eps^2*factor2*f2(y)
+
+# following 7.4 of the xpp book
+u1'=(omf+d)*(u1*(1-u1^2-v1^2)-v1)
+v1'=(omf+d)*(v1*(1-u1^2-v1^2)+u1)
+
+u2'=(omf+d)*(u2*(1-u2^2-v2^2)-v2)
+v2'=(omf+d)*(v2*(1-u2^2-v2^2)+u2)
+
+# initialize cosine at (1,0)
+u1(0)=1
+v1(0)=0
+
+# initialize cosine and sine at 2 radians
+u2(0)=-0.4161468365471
+v2(0)=0.9092974268256817
+
+
+v0(0)=-.05080318
+h0(0)=0.26303521
+r0(0)=0.3
+
+
+aux ga=g(u1,u2)
+aux dva=omx*omfix*(-iL(v0)-ina(v0,h0)-ik(v0,h0)-it(v0,r0)+ib)
+aux dha=omx*omfix*(hinf(v0)-h0)/tauh(v0)
+aux dra=omx*omfix*(rinf(v0)-r0)/taur(v0)
+
+@ nplots=2
+@ xp1=t,yp1=v0,xp2=t,yp2=ga
+@ xlo=1900,xhi=2000
+@ ylo=-1.5,yhi=1.5
+@ dt=0.01,total=2000
+@ dsmin=1e-10, dsmax=2e-2, ds=1e-3, nmax=2000
+@ parmin=-.3,parmax=.3

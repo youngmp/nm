@@ -1,0 +1,20 @@
+# 2:3 reduced forced thal.
+# right-hand sidefunctions are from v2_jupyter/fourier_thal1.ipynb
+# save 2par to /v2_bifdat_2par/redu/.
+
+p eps=.05,d=0.01
+p o1=1,o2=1
+
+h1(x)=-1.4818+2*cos(x*6.0)*(0.0268)-2*sin(x*6.0)*(0.0267)
+h2(x)=29.6783+2*cos(x*6.0)*(0.8579)-2*sin(x*6.0)*(-0.1950)-2*sin(x*12.0)*(0.0063)
+
+f1(x)=o1*eps*h1(x)
+f2(x)=o2*eps^2*h2(x)
+
+x'=-d+f1(x)+f2(x)
+
+@ bounds=10000000
+@ dt=.01
+@ total=500
+
+@ dsmax=.01,dsmin=.00001,ds=.01,parmax=.3,parmin=-.3

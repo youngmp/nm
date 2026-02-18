@@ -1,0 +1,32 @@
+# 3:4 reduced thal2
+# data files are from v2_jupyter/fourier_thal2.ipynb
+# save 2par to /bifdat_2par/redu/
+
+p eps=0.01,b=0.01
+p o1=1,o2=1
+
+h1a(x)=0.2387+2*cos(x*12.0)*(0.0031)-2*sin(x*12.0)*(-0.0030)
+j1a(x)=-5.9757
+h2a(x)=2*cos(x*12.0)*(0.0018)-2*sin(x*12.0)*(0.0021)
+j2a1(x)=-0.1373+2*cos(x*12.0)*(-0.0691)-2*sin(x*12.0)*(-0.0732)
+j2a2(x)=-5974.1118
+
+
+h1b(x)=0.2387+2*cos(x*12.0)*(0.0038)-2*sin(x*12.0)*(0.0032)
+j1b(x)=0
+h2b(x)=0.0051+2*cos(x*12.0)*(-0.0016)
+j2b1(x)=2*cos(x*12.0)*(0.0718)-2*sin(x*12.0)*(-0.0851)-2*sin(x*24.0)*(-0.0099)
+j2b2(x)=0
+
+f1(x)=h1a(x)+b*j1a(x)-h1b(x)-b*j1b(x)
+f2(x)=h2a(x)+b*j2a1(x)+b^2*j2a2(x)-h2b(x)-b*j2b2(x)-b^2*j2b2(x)
+
+x'=o1*eps*f1(x)+o2*eps^2*f2(x)
+
+
+@ total=2000
+@ bounds=100000000
+@ xlo=0,xhi=2000
+@ ylo=0,yhi=6.3
+@ dsmax=0.002,dsmin=0.0000001,parmin=-.3,parmax=.3
+@ ds=0.001

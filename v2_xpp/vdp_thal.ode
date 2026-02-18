@@ -1,0 +1,69 @@
+p eps=.0,b=.01
+p omfixx=1.008401523115462,omfixy=1.0000999958313992
+p omx=1,omy=1
+
+########## thal
+
+p gl=0.05,gna=3,gk=5,gt=5
+p el=-70,ena=50,ek=-90,et=0
+p esyn=-100
+p c=1,alpha=3,beta=2,sigmat=0.8
+p vt=-20,ib=8.2
+
+ah(v) = 0.128*exp(-(v+46)/18)  
+bh(v) = 4/(1+exp(-(v+23)/5))  
+
+minf(v) = 1/(1+exp(-(v+37)/7))  
+hinf(v) = 1/(1+exp((v+41)/4))  
+rinf(v) = 1/(1+exp((v+84)/4))  
+pinf(v) = 1/(1+exp(-(v+60)/6.2))  
+ainf(v) = 1/(1+exp(-(v-vt)/sigmat))
+
+tauh(v) = 1/(ah(v)+bh(v))  
+taur(v) = 28+exp(-(v+25)/10.5)  
+
+iL(v) = gL*(v-eL)  
+ina(v,h) = gna*minf(v)^3*h*(v-ena)  
+ik(v,h) = gk*(0.75*(1-h))^4*(v-ek)  
+it(v,r) = gt*pinf(v)^2*r*(v-et)
+isyn(v,w) = eps*w2*(v*100-esyn)+(eps*b+20*eps^2*b^2)*100
+
+v0b=v0*100
+r0b=r0/100
+
+v0' = omfixx*omx*(-iL(v0b)-ina(v0b,h0)-ik(v0b,h0)-it(v0b,r0b)+ib)/c/100-isyn(v0,w2)/c/100
+h0' = omfixx*omx*(hinf(v0b)-h0)/tauh(v0b)
+r0' = omfixx*omx*(rinf(v0b)-r0b)/taur(v0b)*100
+w0' = omfixx*omx*(alpha*(1-w0)*ainf(v0b)-beta*w0)
+
+
+v0(0)=-0.64
+h0(0)=0.71
+r0(0)=0.25
+w0(0)=0
+
+
+######## vdp
+p vt2=1,sigmat2=0.1,mu2=0.04
+p alpha2=3,beta2=2,esyn2=-2
+
+ainf2(v) = 1/(1+exp(-(v-vt2)/sigmat2))
+    
+v2' = omfixy*omy*(mu2*(v2-v2^3/3-h2))-eps*w0*(v2-esyn2)
+h2' = omfixy*omy*(v2/mu2)
+w2' = omfixy*omy*(alpha2*(1-w2)*ainf2(v2)-beta2*w2)
+
+
+
+v2(0)=.32
+h2(0)=0.128
+w2(0)=0.54
+
+aux ainfa=ainf(v0b)
+
+@ nplot=2,xp0=t,yp0=v0,xp1=t,yp1=v2
+#@ total=25000
+@ total=5000
+@ xlo=0,xhi=1000,ylo=-80,yhi=10
+@ dt=.01
+@ ds=.01,dsmax=0.01,dsmin=1e-7,parmin=-0.3,parmax=0.3
