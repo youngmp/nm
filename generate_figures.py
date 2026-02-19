@@ -3588,7 +3588,7 @@ def main():
         (bif1d_thal1,[],['figs/f_bif1d_thal1.pdf']),
         
         (bif_thal2_11,[],['figs/f_bif1d_thal2_11.pdf']),
-        (bif_thal2a,[],['figs/f_bif1d_thal2a.pdf']),
+        #(bif_thal2a,[],['figs/f_bif1d_thal2a.pdf']),
         (bif_thal2b,[],['figs/f_bif1d_thal2b.pdf']),
 
         (bif1_vdp_thal,[],['figs/f_bif1d_vdp_thal.pdf']),
