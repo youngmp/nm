@@ -64,7 +64,7 @@ def _redu_c(t,y,a,eps=0,del1=None,miter=None):
     return h
 
 
-def _redu_c2(t,y,a,eps=0,b=0,miter=None):
+def _redu_c2(t,y,a,eps=0,b=0,miter=None,n_factor=False):
     """
     for coupling only
     with explicit heterogeneity.
@@ -133,9 +133,12 @@ def _redu_c2(t,y,a,eps=0,b=0,miter=None):
         h += eps**4*(s1_h4_hom+s1_h4_het1+s1_h4_het2+s1_h4_het3+s1_h4_het4)
         h -= eps**4*(s2_h4_hom+s2_h4_het1+s2_h4_het2+s2_h4_het3+s2_h4_het4)
 
-        
     
-    return h
+    if n_factor:
+        
+        return h*a._n[1]
+    else:
+        return h
 
 
 def _redu(t,y,a,eps=.01,del1=0):

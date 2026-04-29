@@ -1,4 +1,4 @@
-from .rhs import _redu_c
+from .rhs import _redu_c, _redu_c2
 from . import util
 from .util import (bif1d, _get_sol, get_phase, add_arrow_to_line2D)
 
@@ -418,23 +418,24 @@ def draw_full_solutions(axs,a,T,eps,b,init,full_rhs,recompute=False,
     return axs
 
 
-def draw_1d_rhs(axs,a,eps,b,miter=None,rhs=_redu_c,color='#57acdc',ls='-',label='',lw=1):
+def draw_1d_rhs(axs,a,eps,b,miter=None,rhs=_redu_c,color='#57acdc',ls='-',label='',lw=1,n_factor=False):
     x = np.linspace(0,2*np.pi,200)
-    y = rhs(0,x,a,eps,b,miter=miter)
+    y = rhs(0,x,a,eps,b,miter=miter,n_factor=n_factor)
     axs.plot(x,y,color=color,lw=lw,label=label,ls=ls)
     
 
     return axs
 
-def draw_1d_solutions(axs,a,T,eps,b,init,rhs=_redu_c,miter=None,ls='-',lw=1,
-                      color='#57acdc',label='',zorder=5,arrow_locs=[0.75]):
+def draw_1d_solutions(axs,a,T,eps,b,init,rhs=_redu_c2,miter=None,ls='-',lw=1,
+                      color='#57acdc',label='',zorder=5,arrow_locs=[0.75],n_factor=False):
 
     # trajectory
     dt = .02;t = np.arange(0,T,dt);th_init = init
 
-    args1 = {'args':[a,eps,b,miter],'rtol':1e-7,'atol':1e-7,'method':'LSODA',
+    args1 = {'args':[a,eps,b,miter,n_factor],'rtol':1e-7,'atol':1e-7,'method':'LSODA',
              't_span':[0,t[-1]],'t_eval':t}
 
+    print('nfactor in draw1d',n_factor)
     # solution on 1d phase plane
     solr1d = solve_ivp(rhs,y0=[th_init],**args1)
     
