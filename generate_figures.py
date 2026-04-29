@@ -474,8 +474,18 @@ def tongues_thal1_v2():
 
         # load data full
 
-        twopar1 = np.loadtxt(dir_full+'thal1f_{}{}_pos_fixed.dat'.format(n,m))
-        twopar2 = np.loadtxt(dir_full+'thal1f_{}{}_neg_fixed.dat'.format(n,m))
+        if k == 3:
+            twopar1 = np.loadtxt(dir_full+'thal1f_{}{}_v2a_fixed.dat'.format(n,m))
+            twopar2 = np.loadtxt(dir_full+'thal1f_{}{}_v2b_fixed.dat'.format(n,m))
+        elif k == 2:
+            twopar1 = np.loadtxt(dir_full+'thal1f_{}{}_v2a_fixed.dat'.format(n,m))
+            twopar2 = np.loadtxt(dir_full+'thal1f_{}{}_v2b_fixed.dat'.format(n,m))
+        elif k == 1:
+            twopar1 = np.loadtxt(dir_full+'thal1f_{}{}_pos2_fixed.dat'.format(n,m))
+            twopar2 = np.loadtxt(dir_full+'thal1f_{}{}_neg_fixed.dat'.format(n,m))
+        else:
+            twopar1 = np.loadtxt(dir_full+'thal1f_{}{}_pos_fixed.dat'.format(n,m))
+            twopar2 = np.loadtxt(dir_full+'thal1f_{}{}_neg_fixed.dat'.format(n,m))
 
         twopar_eps1 = twopar1[:,0];twopar_del1 = twopar1[:,1]
         twopar_eps2 = twopar2[:,0];twopar_del2 = twopar2[:,1]
@@ -531,7 +541,7 @@ def tongues_thal1_v2():
     axs[0].legend(**kw_legend2)
 
 
-    plt.subplots_adjust(left=.075,right=.97,bottom=.18,top=.89,wspace=.3)
+    plt.subplots_adjust(left=.075,right=.97,bottom=.18,top=.89,wspace=.32)
 
     return fig
 
@@ -1195,7 +1205,7 @@ def traj_thal2(NH=1024):
     #pl_list = [(1,1),(2,1),(1,2),(2,3)]
     T_list = [2000,1000,1000,
               1000,1000,1000,
-              1000,1000,1000]
+              1000,2000,2000]
 
     pl_list = [(1,1),(1,2),(2,1),
                (1,3),(3,1),(2,3),
@@ -1220,8 +1230,8 @@ def traj_thal2(NH=1024):
 
     full_rhs = _full
 
-    padw=0.045; padh=0.03
-    lo=0.07; hi=0.96
+    padw=0.047; padh=0.03
+    lo=0.075; hi=0.96
 
     fig = plt.figure(figsize=(8,8))
     nr1 = 2
@@ -1253,8 +1263,8 @@ def traj_thal2(NH=1024):
                 np.asarray(axs4),np.asarray(axs5),np.asarray(axs6),
                 np.asarray(axs7),np.asarray(axs8),np.asarray(axs9)]
 
-    kws_o1 = dict(rhs=_redu_c2,miter=1,label=r'$O(\varepsilon)$',color='tab:red',ls='--')
-    kws_o2 = dict(rhs=_redu_c2,miter=2,label=r'$O(\varepsilon^2)$',lw=1.5)
+    kws_o1 = dict(rhs=_redu_c2,miter=1,label=r'$O(\varepsilon)$',color='tab:red',ls='--',n_factor=True)
+    kws_o2 = dict(rhs=_redu_c2,miter=2,label=r'$O(\varepsilon^2)$',lw=1.5,n_factor=True)
     
     for k,axs in enumerate(axs_list):
         print('pl',pl_list[k],'e',e_list[k],';','d',b_list[k])
@@ -1324,6 +1334,8 @@ def traj_thal2(NH=1024):
         
         axs[0].set_ylabel(r'$\mathcal{H}$',labelpad=0)
         axs[1].set_ylabel(r'$t$',labelpad=0)
+
+    #plt.subplots_adjust(left=.09)
 
     return fig
 
@@ -1543,19 +1555,19 @@ def bif1d_cgl1():
         ax1.xaxis.set_label_coords(1.05, 0.02)
         
         ax0.set_title(labels[k],loc='left')
-        ax1.set_title(labels[k+3],loc='left')
+        ax1.set_title(labels[k+1],loc='left')
         
         ax0.set_ylabel(r'$\phi$',labelpad=-10)
         ax0.set_ylim(0,2*np.pi)
         ax0.set_yticks([0,2*np.pi])
         ax0.set_yticklabels(pi_label_short)
-        ax0.set_title(labels[k],loc='left')
+        ax0.set_title(labels[2*k],loc='left')
         
         ax1.set_ylabel(r'$\phi$',labelpad=-10)
         ax1.set_ylim(0,2*np.pi)
         ax1.set_yticks([0,2*np.pi])
         ax1.set_yticklabels(pi_label_short)
-        ax1.set_title(labels[k],loc='left')
+        ax1.set_title(labels[2*k+1],loc='left')
         
         # label trajectory plots
         #ax0.axvline(e0,-.05,1.05,**argt)
@@ -1864,21 +1876,22 @@ def bif1d_thal1():
         
         ax1.set_xlabel(r'$\varepsilon$')
         ax1.xaxis.set_label_coords(1.05, 0.02)
-        
-        ax0.set_title(labels[k],loc='left')
-        ax1.set_title(labels[k+3],loc='left')
+
+        jj = k*2
+        ax0.set_title(labels[jj],loc='left')
+        ax1.set_title(labels[jj+1],loc='left')
         
         ax0.set_ylabel(r'$\phi$',labelpad=-10)
         ax0.set_ylim(0,2*np.pi)
         ax0.set_yticks([0,2*np.pi])
         ax0.set_yticklabels(pi_label_short)
-        ax0.set_title(labels[k],loc='left')
+        #ax0.set_title(labels[k],loc='left')
         
         #ax1.set_ylabel(r'$\phi$',labelpad=0)
         ax1.set_ylim(0,2*np.pi)
         ax1.set_yticks([0,2*np.pi])
         ax1.set_yticklabels(pi_label_short)
-        ax1.set_title(labels[k],loc='left')
+        #ax1.set_title(labels[k+3],loc='left')
         
         # label trajectory plots
         #ax0.axvline(e0,-.05,1.05,**argt)
@@ -3544,9 +3557,12 @@ def bif2_vdp_thal():
         ax.set_xlim(*xlims[k])
         ax.set_ylim(*ylims[k])
 
+        ax.set_xlabel(r'$b$',labelpad=-1)
+        ax.set_ylabel(r'$\varepsilon$')
+
         
     
-    plt.subplots_adjust(hspace=.32,wspace=.7,left=.075,right=.97,bottom=.075,top=.95)
+    plt.subplots_adjust(hspace=.32,wspace=.85,left=.075,right=.97,bottom=.075,top=.95)
 
     
     return fig
